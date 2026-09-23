@@ -146,18 +146,25 @@ No new tables. Auth relies entirely on Supabase Auth + `profiles` +
 - `refunds` — payment_id, amount, reason, provider_refund_id, created_at.
   Same read-only posture as `payments`.
 
-## Phase 4 — Galleries (high priority — replaces Effsight)
-- `galleries` — title, customer_id, project_id (nullable until Phase 6/project
-  work), description, cover_asset_id, slug (unique, public), published
-  boolean, visibility (`public`|`private`), password_hash nullable, expires_at
-  nullable, allow_downloads boolean.
+## Phase 4 — Projects + Galleries (applied — `0007_phase4_projects_galleries.sql`; high priority, replaces Effsight)
+- `project_statuses` / `projects` / `project_members` — brought forward from
+  "Cross-cutting" below since galleries reference `project_id`. Configurable
+  status lookup, same pattern as `lead_statuses`/`booking_statuses`.
+- `galleries` — title, customer_id, project_id (nullable), description,
+  cover_asset_id, slug (unique, public), published boolean, visibility
+  (`public`|`private`), password_hash nullable, expires_at nullable,
+  allow_downloads boolean.
 - `gallery_assets` — gallery_id, storage_path, kind (`image`|`video`),
   position, thumbnail_path, width/height, created_at.
-- `gallery_access` — access rule detail (visibility/password/expiry live here
-  or folded into `galleries` — final call in Phase 4 once upload flow is
-  built; kept as a placeholder table name now so the ERD is stable).
+- `gallery_access` was resolved (not built as a separate table) — visibility/
+  password/expiry/downloads live directly on `galleries`. See
+  `docs/DECISIONS.md` D-015.
 - `gallery_views` — lightweight view-log (customer viewed gallery X at time Y)
   feeding the customer timeline.
+- Storage buckets `gallery-public` (public) and `gallery-private` (private)
+  created via this migration. `galleries`/`gallery_assets`/`gallery_views`
+  have no `anon` RLS policies — the public route reads through the service
+  role server-side (D-015).
 
 ## Phase 5 — Shopify sync
 No new core tables; adds `shopify_customer_id`, `shopify_order_id` columns to
@@ -218,10 +225,8 @@ mechanism required by spec §13/§14/§35.
 ## Cross-cutting
 - `tasks` (Phase 2 or when first needed) — title, description, assigned_to,
   customer_id, project_id, due_date, priority, status, completed_at.
-- `projects` (Phase 4, needed before galleries can reference them properly) —
-  customer_id, name, service_id, assigned_staff (join table
-  `project_members`), status (configurable lookup), start_date, due_date,
-  completion_date, notes, revenue (derived from linked payments).
+- `projects` — moved up into the Phase 4 section above (built alongside
+  galleries, which reference it).
 - `integrations` — provider, status (connected/not_connected/error),
   connected_at, metadata jsonb (never raw secrets — those live only in env
   vars / Supabase Vault, see `SECURITY.md`).

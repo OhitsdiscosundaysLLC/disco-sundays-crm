@@ -296,6 +296,165 @@ export type Database = {
         }
         Relationships: []
       }
+      galleries: {
+        Row: {
+          allow_downloads: boolean
+          cover_asset_id: string | null
+          created_at: string
+          customer_id: string
+          deleted_at: string | null
+          description: string | null
+          expires_at: string | null
+          id: string
+          password_hash: string | null
+          project_id: string | null
+          published: boolean
+          slug: string
+          title: string
+          updated_at: string
+          visibility: string
+        }
+        Insert: {
+          allow_downloads?: boolean
+          cover_asset_id?: string | null
+          created_at?: string
+          customer_id: string
+          deleted_at?: string | null
+          description?: string | null
+          expires_at?: string | null
+          id?: string
+          password_hash?: string | null
+          project_id?: string | null
+          published?: boolean
+          slug: string
+          title: string
+          updated_at?: string
+          visibility?: string
+        }
+        Update: {
+          allow_downloads?: boolean
+          cover_asset_id?: string | null
+          created_at?: string
+          customer_id?: string
+          deleted_at?: string | null
+          description?: string | null
+          expires_at?: string | null
+          id?: string
+          password_hash?: string | null
+          project_id?: string | null
+          published?: boolean
+          slug?: string
+          title?: string
+          updated_at?: string
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "galleries_cover_asset_id_fkey"
+            columns: ["cover_asset_id"]
+            isOneToOne: false
+            referencedRelation: "gallery_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "galleries_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "galleries_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gallery_assets: {
+        Row: {
+          created_at: string
+          gallery_id: string
+          height: number | null
+          id: string
+          kind: string
+          position: number
+          storage_path: string
+          thumbnail_path: string | null
+          width: number | null
+        }
+        Insert: {
+          created_at?: string
+          gallery_id: string
+          height?: number | null
+          id?: string
+          kind: string
+          position?: number
+          storage_path: string
+          thumbnail_path?: string | null
+          width?: number | null
+        }
+        Update: {
+          created_at?: string
+          gallery_id?: string
+          height?: number | null
+          id?: string
+          kind?: string
+          position?: number
+          storage_path?: string
+          thumbnail_path?: string | null
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gallery_assets_gallery_id_fkey"
+            columns: ["gallery_id"]
+            isOneToOne: false
+            referencedRelation: "galleries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gallery_views: {
+        Row: {
+          customer_id: string | null
+          gallery_id: string
+          id: string
+          metadata: Json
+          viewed_at: string
+        }
+        Insert: {
+          customer_id?: string | null
+          gallery_id: string
+          id?: string
+          metadata?: Json
+          viewed_at?: string
+        }
+        Update: {
+          customer_id?: string | null
+          gallery_id?: string
+          id?: string
+          metadata?: Json
+          viewed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gallery_views_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gallery_views_gallery_id_fkey"
+            columns: ["gallery_id"]
+            isOneToOne: false
+            referencedRelation: "galleries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_statuses: {
         Row: {
           is_terminal: boolean
@@ -529,6 +688,127 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      project_members: {
+        Row: {
+          created_at: string
+          project_id: string
+          staff_id: string
+        }
+        Insert: {
+          created_at?: string
+          project_id: string
+          staff_id: string
+        }
+        Update: {
+          created_at?: string
+          project_id?: string
+          staff_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_members_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_statuses: {
+        Row: {
+          is_terminal: boolean
+          label: string
+          slug: string
+          sort_order: number
+        }
+        Insert: {
+          is_terminal?: boolean
+          label: string
+          slug: string
+          sort_order: number
+        }
+        Update: {
+          is_terminal?: boolean
+          label?: string
+          slug?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      projects: {
+        Row: {
+          completion_date: string | null
+          created_at: string
+          customer_id: string
+          deleted_at: string | null
+          due_date: string | null
+          id: string
+          name: string
+          notes: string | null
+          service_id: string | null
+          start_date: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          completion_date?: string | null
+          created_at?: string
+          customer_id: string
+          deleted_at?: string | null
+          due_date?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          service_id?: string | null
+          start_date?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          completion_date?: string | null
+          created_at?: string
+          customer_id?: string
+          deleted_at?: string | null
+          due_date?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          service_id?: string | null
+          start_date?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "projects_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_status_fkey"
+            columns: ["status"]
+            isOneToOne: false
+            referencedRelation: "project_statuses"
+            referencedColumns: ["slug"]
+          },
+        ]
       }
       refunds: {
         Row: {

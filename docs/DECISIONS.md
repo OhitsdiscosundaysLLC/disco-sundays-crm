@@ -173,6 +173,37 @@ the CRM (e.g. non-Square-synced sessions), not exclusively synced. Square
 remains the source of truth only for bookings it actually created
 (`external_square_booking_id` set).
 
+## D-015 — Gallery access rules folded into `galleries`; public route reads through the service role
+
+**Context**: `docs/DATABASE.md`'s original Phase 4 note deferred a design
+call: whether visibility/password/expiry/downloads live on `galleries`
+itself or in a separate `gallery_access` table, "kept as a placeholder
+table name now so the ERD is stable."
+**Decision**: Folded onto `galleries` directly (`visibility`,
+`password_hash`, `expires_at`, `allow_downloads`) — there is exactly one
+access rule per gallery in this design, so a join table would be pure
+indirection with no real-world case needing more than one.
+**Decision**: `galleries`/`gallery_assets`/`gallery_views` have **no**
+`anon` RLS policies at all. Password verification isn't a safe RLS
+predicate (Postgres RLS can't cheaply/safely bcrypt-compare against a
+client-supplied value per spec of `docs/SECURITY.md` §3's "checked at
+request time, not just link-generation time"), and `password_hash` must
+never be reachable via the client PostgREST API even indirectly. The public
+`/gallery/[slug]` and `/embed/gallery/[id]` routes instead read through the
+Supabase **service role** from trusted Next.js server-side code only
+(`docs/ARCHITECTURE.md` §3's API layer), verify the password/expiry/
+visibility rules there, and issue short-TTL signed URLs for private-bucket
+assets. This is the first place in the project that needs
+`SUPABASE_SERVICE_ROLE_KEY` — see the open questions below for the exact
+credential-intake step.
+**Decision**: Storage buckets `gallery-public` (public) and
+`gallery-private` (private) created via migration, matching
+`docs/ARCHITECTURE.md` §5 exactly. `storage.objects` RLS lets staff manage
+uploads (gated by `galleries` permissions); no `anon` policy is needed on
+either bucket — public-bucket downloads work through Supabase's normal
+public URL (bypasses RLS by design), and private-bucket downloads only
+ever happen through server-generated signed URLs.
+
 ---
 
 ## Open questions for the user (not decided unilaterally)
@@ -193,3 +224,10 @@ inferred, per RULE 6 — flagged rather than guessed:
    this as disabled (checks new passwords against HaveIBeenPwned). Cheap to
    enable, not urgent — a Dashboard → Authentication → Policies toggle, not a
    migration, so not done unilaterally. Recommend enabling it.
+5. **`SUPABASE_SERVICE_ROLE_KEY`**: needed for the public gallery route
+   (D-015) to actually serve galleries — the route's code is written but
+   inert without it. Get it from Supabase Dashboard → Project Settings →
+   API → service_role key (server-only, full-access — never share this one
+   the way the anon key is shared). Put it in Vercel's server-side
+   environment variables (and `apps/web/.env.local` for local dev, already
+   gitignored) as `SUPABASE_SERVICE_ROLE_KEY`. Never paste it into chat.
