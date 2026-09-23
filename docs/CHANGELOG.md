@@ -3,6 +3,50 @@
 All notable changes to the Disco Sundays CRM project are recorded here,
 newest first.
 
+## Claude Code handoff continuation — Phase 4 (Projects + Galleries) — 2026-09-23
+
+- **Database**: applied `0007_phase4_projects_galleries.sql` —
+  `project_statuses`/`projects`/`project_members` (brought forward from the
+  "cross-cutting" section since galleries reference `project_id`);
+  `galleries`/`gallery_assets`/`gallery_views`; `gallery-public`/
+  `gallery-private` Storage buckets. Resolved the `gallery_access` design
+  question DATABASE.md had left open — folded onto `galleries` directly
+  rather than a separate table (D-015). Advisors re-ran clean.
+- **Projects**: full CRUD application UI (list, create, edit, archive).
+- **Galleries**: full management UI — create/edit settings (title,
+  project, visibility, password, expiry, downloads), publish/unpublish,
+  drag-free multi-file upload straight to Supabase Storage from the
+  browser (client-side, authenticated, RLS-gated), cover selection, asset
+  delete, public-link + iframe-embed snippet display.
+- **Public gallery routes**: `/gallery/[slug]` and `/embed/gallery/[id]`
+  built and wired up. Per D-015 these read through the Supabase **service
+  role** (never anon-key RLS) so password verification can happen safely
+  server-side and `password_hash` is never client-reachable. Password
+  hashing uses `node:crypto` scrypt — no new dependency. A signed,
+  httpOnly cookie (HMAC over `SUPABASE_SERVICE_ROLE_KEY`, 24h TTL) remembers
+  a correct password entry so visitors aren't re-prompted on every page
+  load.
+- **First real use of `SUPABASE_SERVICE_ROLE_KEY`** in this project — not
+  yet set anywhere, so the public routes currently show an honest "not
+  configured yet" message instead of an error or fake content. Exact
+  credential-intake step recorded in D-015 and `apps/web/.env.example`.
+- **Verified live**: created a real customer, a password-protected private
+  gallery, and a project against production Supabase using the owner
+  account — creation, settings, and publish/unpublish all confirmed
+  working, including the public route's graceful "not configured" fallback
+  (proving it fails honestly, not silently, without the service key).
+  Actual file upload and the password-entry gate on the public route
+  itself could not be exercised in this pass — this sandbox's browser
+  automation has no OS file-picker, and the service key isn't set yet. All
+  test records deleted afterward.
+- Docs updated: CHANGELOG, DECISIONS (D-015), DATABASE (Phase 4 section
+  resolved, `projects` moved out of "cross-cutting"), `.env.example` (both
+  root and `apps/web`) with `SUPABASE_SERVICE_ROLE_KEY` and
+  `NEXT_PUBLIC_APP_URL`.
+- **Not done in this pass**: actually setting `SUPABASE_SERVICE_ROLE_KEY`
+  (user action), asset drag-reordering (position defaults to 0, sorted by
+  created_at — fine for v1), Vercel deployment.
+
 ## Claude Code handoff continuation — Phase 3 (Services/Bookings/Payments) — 2026-09-23
 
 - **Infrastructure resolved**: user created the `disco-sundays-crm` GitHub
