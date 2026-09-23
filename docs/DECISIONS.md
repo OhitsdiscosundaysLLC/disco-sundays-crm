@@ -124,6 +124,36 @@ email → phone → manual merge, per D-009), and retry/failure behavior. A
 sync that would let the CRM overwrite Square's or Shopify's own record of
 its own data is out of scope unless the user explicitly asks for it.
 
+## D-012 — Added the missing `activities` insert policy (Phase 2 gap)
+
+**Context**: Claude Code's first real build/test pass on the handoff found
+that `0001_foundation.sql` created `activities` with a select-only RLS
+policy, explicitly noting the insert policy would arrive "once Phase 2 adds
+a real per-customer FK/policy" — but `0003`/`0004` only added the FK, not
+the policy. Nothing in the app could write a timeline row, which spec §8/§9
+requires for every customer-affecting action.
+**Decision**: Applied `supabase/migrations/0005_phase2_activities_write.sql`
+— an insert policy gated on `has_permission(auth_role(), 'customers',
+'create')` OR `'edit'`, mirroring the existing `notes`/`customer_tags`
+policy style. Purely additive, no data affected, re-ran security advisors
+clean afterward. Treated as a bug fix within Phase 2's own scope, not a new
+decision requiring sign-off — it's what Phase 2 already committed to doing.
+
+## D-013 — Corrected `@supabase/ssr` to `^0.12.7` (was pinned to `^0.5.2`)
+
+**Context**: This was the project's first real `npm install && npm run
+build` (see `docs/CLAUDE_CODE_HANDOFF.md` section AE) — `@supabase/ssr
+^0.5.2` resolved against the already-current `@supabase/supabase-js
+^2.45.4` (which itself resolved to `2.117.1`), and the two packages'
+generated/generic types no longer line up: every Supabase query typed to
+`never`, which `tsc --noEmit` caught immediately once real queries
+(Customers/Leads) were written against it.
+**Decision**: Bumped `@supabase/ssr` to `^0.12.7`, the current major.
+`createServerClient`/`createBrowserClient` call signatures were unchanged;
+only the generated-types generic shape did. No other code changes were
+needed. Recorded here since it's a version correction discovered by the
+first build, not a pre-existing project decision.
+
 ---
 
 ## Open questions for the user (not decided unilaterally)
@@ -131,11 +161,12 @@ its own data is out of scope unless the user explicitly asks for it.
 These affect money, existing integrations, or things that can't be safely
 inferred, per RULE 6 — flagged rather than guessed:
 
-1. **GitHub**: should I create a new repository for this project, or is there
-   an existing Disco Sundays repo I should connect to instead? (D-001)
+1. **GitHub**: still not connected — no `gh` CLI or GitHub token exists in
+   the Claude Code environment either, so this remains the one manual step.
+   See `docs/CLAUDE_CODE_HANDOFF.md` for the exact action. (D-001)
 2. **Square / Base44 credentials**: not available in this environment yet.
    Needed before Phase 3 (Square) and Phase 8 (Base44) can move from
    architecture to live integration.
 3. **Vercel target**: no team/project currently visible to this session —
-   confirm which Vercel account/team the CRM should deploy under when Phase 1
-   starts.
+   confirm which Vercel account/team the CRM should deploy under when
+   deployment is set up.

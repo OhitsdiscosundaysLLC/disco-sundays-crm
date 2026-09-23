@@ -3,6 +3,51 @@
 All notable changes to the Disco Sundays CRM project are recorded here,
 newest first.
 
+## Claude Code handoff continuation — Phase 2 application layer — 2026-09-23
+
+Picked up the Cowork handoff (see `docs/CLAUDE_CODE_HANDOFF.md`). Verified
+the handoff docs against reality first (Supabase schema matched exactly;
+the claimed local git history did not exist on disk).
+
+- **Git**: no `.git` directory was actually present despite the handoff
+  claiming 5 local commits. Initialized fresh and committed the received
+  state honestly as one commit rather than fabricating history. Still not
+  pushed to GitHub — no `gh` CLI or token available in this environment
+  either; exact manual step given to the user.
+- **First real build** (`npm install && npm run build && npm run
+  typecheck`, run for the first time — see handoff section AE): fixed two
+  real issues it surfaced — implicit-`any` cookie callback params in
+  `lib/supabase/{server,middleware}.ts` under `strict` mode, and no ESLint
+  config (`next lint`'s setup wizard can't run non-interactively; added the
+  standard flat config it would have generated). Added a generated
+  `database.types.ts` (via Supabase's typegen) and wired both Supabase
+  client factories to it, so every table query is now type-checked instead
+  of `any`. Corrected `@supabase/ssr` to `^0.12.7` — see D-013.
+- **Database fix**: `activities` was missing its insert policy (Phase 2 gap
+  in the handoff's own migrations) — added
+  `0005_phase2_activities_write.sql`. See D-012.
+- **Customers**: list (search across name/email/phone/company/artist name,
+  permission-gated create button), create, edit, profile page (contact
+  info, external-sync badges for Square/Shopify/Base44, tag add/remove,
+  notes add/delete with author-or-delete-permission gating, append-only
+  timeline fed by every mutating action), soft-delete (archive).
+- **Leads**: list (status-filter chips backed by the live `lead_statuses`
+  table, search), create, edit, detail page, soft-delete, "Convert to
+  customer" — ordered dedup match (email → phone → create new) per D-009,
+  writes a `lead.converted` timeline activity on the resulting customer,
+  never silently double-creates a customer for an already-converted lead.
+- Every server action re-checks the caller's permission server-side via
+  `has_permission()` before writing (SECURITY.md's two-layer requirement);
+  RLS is the backstop either way.
+- **Verification**: `npm run build`, `typecheck`, and `lint` all pass clean.
+  Confirmed in a real browser that unauthenticated requests to the new
+  `/customers` and `/leads` routes correctly redirect to `/login` (no
+  console/server errors). Full authenticated CRUD click-through is still
+  pending the first owner account (no self-service path to `owner` by
+  design — D-003 — the human step is documented in
+  `docs/CLAUDE_CODE_HANDOFF.md`).
+- **Not done in this pass**: Vercel deployment (no project connected yet).
+
 ## Phase 1 — Foundation — 2026-09-23
 
 - Scaffolded the Next.js 15 (App Router) + TypeScript + Tailwind app at

@@ -115,6 +115,12 @@ No new tables. Auth relies entirely on Supabase Auth + `profiles` +
   write to `customers`/`leads` through a server action using the service
   role — never directly from the client — and record an `activities` row.
   This table's RLS intentionally grants **no** access to `anon`.
+- `supabase/migrations/0005_phase2_activities_write.sql` (applied
+  2026-09-23, part of the Claude Code continuation): the Phase 0 migration
+  left `activities` with a select policy only ("gated on the 'customers'
+  resource until Phase 2 adds a real per-customer FK/policy") but Phase 2
+  never added the insert policy, so the application couldn't write a single
+  timeline row. Fixed additively — see `docs/DECISIONS.md` D-012.
 
 ## Phase 3 — Services / Bookings / Payments
 - `services` — name, description, category, price, duration_minutes, active,

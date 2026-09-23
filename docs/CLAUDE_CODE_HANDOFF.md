@@ -32,12 +32,22 @@ proven). See `docs/PROJECT_SPEC.md` §3 and `docs/INTEGRATIONS.md`.
 
 ## C. Current implementation status
 
+**Updated 2026-09-23 by Claude Code**, after the section D-AH content below
+was picked up. Original handoff status is preserved in git history; this
+table reflects reality as of the Claude Code continuation.
+
 | Phase | Status |
 |---|---|
 | 0 — Discovery & architecture | Done |
-| 1 — Foundation (Next.js/auth/RBAC/layout) | Code written, **not build-verified** (section AE) |
-| 2 — CRM | Database done and verified; application UI (list/detail pages for customers & leads) **not started** |
+| 1 — Foundation (Next.js/auth/RBAC/layout) | Done, build-verified (`npm run build`/`typecheck`/`lint` all pass) |
+| 2 — CRM | Done: database + Customers/Leads application UI (list, create, edit, detail, search, tags, notes, timeline, lead conversion) |
 | 3–11 | Not started |
+
+Still open: no owner account exists yet (no self-service path by design,
+D-003 — needs the one manual step in `docs/CLAUDE_CODE_START.md`), and this
+repo is still not pushed to GitHub (no `gh` CLI or token in this
+environment either — same manual step needed as before, see
+`docs/CLAUDE_CODE_START.md`).
 
 ## D. Exact completed work
 
@@ -67,13 +77,11 @@ proven). See `docs/PROJECT_SPEC.md` §3 and `docs/INTEGRATIONS.md`.
 
 ## E. Exact incomplete work
 
-Everything not listed under D. Concretely, in spec order: Customers/Leads
-application UI (list, create, edit, search, profile, timeline, tags, notes
-UI, lead conversion), Services/Bookings/Payments + Square integration,
-Gallery system, Shopify integration, Memberships, Referrals/Rewards, Base44
+Customers/Leads application UI is now done (see section C). Remaining, in
+spec order: Services/Bookings/Payments + Square integration, Gallery
+system, Shopify integration, Memberships, Referrals/Rewards, Base44
 migration, Automation engine, Reporting, Production hardening. None of
-these have any code written yet — there is nothing to "discover" here
-beyond what's in section D.
+these have any code written yet.
 
 ## F. Architecture
 
@@ -301,14 +309,16 @@ add env vars speculatively.
 
 ## AD. Known issues
 
-- `apps/web` has never been built or typechecked (section AE) — there may
-  be typos, import-path mistakes, or minor API-shape errors (e.g. in the
-  `@supabase/ssr` cookie-handling calls) that only a real `npm install &&
-  npm run build` will surface. Treat it as "believed correct, unverified,"
-  not "tested."
+- Resolved by the Claude Code continuation: the build-verification gap
+  (section AE) is closed — `npm run build`/`typecheck`/`lint` all pass. Two
+  real issues it found are fixed: implicit-`any` cookie callback params
+  under `strict` mode, and `@supabase/ssr` was pinned to a version
+  (`^0.5.2`) incompatible with the `@supabase/supabase-js` it resolved
+  against (see D-013).
 - No owner-role account exists in `profiles` yet — sign-in has nothing to
   authenticate against until one staff account is created and promoted
-  (section I).
+  (section I). This is the one remaining manual step besides the GitHub
+  push.
 - Root `apps/web/package.json` briefly existed as a stray `npm init -y`
   scaffold from a blocked install attempt; it was overwritten with the
   real one before committing. Nothing to clean up, noted here only so a
@@ -363,21 +373,17 @@ connected system (`docs/SECURITY.md` §10).
 
 ## AH. Exact next implementation phase
 
-1. **Infrastructure first**: get this repo pushed to GitHub and a Vercel
-   project connected (see `docs/CLAUDE_CODE_START.md` — this is likely a
-   short, mostly-automatable step in a real dev environment, unlike in the
-   sandbox that hit the block described in AE).
-2. Run `npm install && npm run build` (and `npm run typecheck`) in
-   `apps/web` for the first time. Fix whatever it finds. This is the real
-   test Phase 1 has been waiting on.
-3. Create one real `owner` account (sign up via Supabase Auth, then a
-   one-time manual SQL promotion — section I) so the app is actually usable
-   end to end.
-4. Build the Customers and Leads application UI (list, create, edit,
-   search, customer profile with timeline, tags, notes, lead conversion) —
-   the database side is already done and live; this is pure application
-   layer on top of it. This completes Phase 2.
-5. Continue phase by phase per `docs/PROJECT_SPEC.md` §7 and the phase
-   detail in `docs/ARCHITECTURE.md`/`docs/DATABASE.md`, testing and
-   committing at each boundary, exactly as RULE 7 in `docs/PROJECT_SPEC.md`
-   describes.
+Phases 0–2 are done (section C). Remaining manual steps (both documented in
+`docs/CLAUDE_CODE_START.md`, neither blocks further phase work): push this
+repo to GitHub, and create+promote the first owner account.
+
+Next: **Phase 3 — Services / Bookings / Payments + Square integration
+architecture**, per `docs/PROJECT_SPEC.md` §7 and the schema in
+`docs/DATABASE.md`'s Phase 3 section (`services`, `bookings`, `payments`,
+`refunds`, `webhook_events`). Square credentials are not available in this
+environment (`docs/CLAUDE_CODE_HANDOFF.md` section M) — build the schema,
+RLS, and application UI first (services catalog, booking records,
+payment records against real data with no live sync yet), and stop for the
+credential-intake protocol (`docs/SECURITY.md` §9) only when the webhook/
+sync code itself needs a real token. Continue phase by phase per RULE 7,
+testing and committing at each boundary.

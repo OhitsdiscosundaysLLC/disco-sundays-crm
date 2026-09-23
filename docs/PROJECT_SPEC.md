@@ -1,6 +1,6 @@
 # Disco Sundays CRM / Business Operating System — Project Spec
 
-Status: Phase 0 (Discovery & Architecture)
+Status: Phase 2 (CRM) complete — see docs/CLAUDE_CODE_HANDOFF.md for full status
 Last updated: 2026-09-23
 
 ## 1. What this is
