@@ -154,6 +154,25 @@ only the generated-types generic shape did. No other code changes were
 needed. Recorded here since it's a version correction discovered by the
 first build, not a pre-existing project decision.
 
+## D-014 — Payments table is read-only in the application until Square/Shopify sync exists
+
+**Context**: Phase 3 needed the `payments` schema (D-011/D-005 already committed to
+Square/Shopify being the only source of truth for payments), but neither
+integration's credentials exist yet (`docs/INTEGRATIONS.md`).
+**Decision**: Built the full schema (`payments`, `refunds`) and RLS now, but
+gave `payments`/`refunds` a select-only policy — no insert/update/delete for
+authenticated users, matching `audit_logs`'s posture. The application's
+Payments page is read-only, showing an honest "not connected yet" empty
+state rather than a form that would let staff fabricate payment records
+(spec RULE 2). A row can only ever be written by a future webhook handler
+using the service role.
+**Decision**: `bookings`, by contrast, got full CRUD in the application —
+unlike payments, the spec's Bookings nav item and `external_square_booking_id`
+being nullable both indicate bookings are meant to be creatable directly in
+the CRM (e.g. non-Square-synced sessions), not exclusively synced. Square
+remains the source of truth only for bookings it actually created
+(`external_square_booking_id` set).
+
 ---
 
 ## Open questions for the user (not decided unilaterally)
@@ -161,12 +180,16 @@ first build, not a pre-existing project decision.
 These affect money, existing integrations, or things that can't be safely
 inferred, per RULE 6 — flagged rather than guessed:
 
-1. **GitHub**: still not connected — no `gh` CLI or GitHub token exists in
-   the Claude Code environment either, so this remains the one manual step.
-   See `docs/CLAUDE_CODE_HANDOFF.md` for the exact action. (D-001)
+1. ~~**GitHub**~~ — resolved 2026-09-23: repo `disco-sundays-crm` created,
+   remote connected, local history pushed and verified (`git fetch` confirms
+   `origin/main` matches local `main` exactly). (D-001)
 2. **Square / Base44 credentials**: not available in this environment yet.
-   Needed before Phase 3 (Square) and Phase 8 (Base44) can move from
-   architecture to live integration.
+   Needed before Square sync (architecture/schema/UI already built, see D-014)
+   and Phase 8 (Base44) can move from architecture to live integration.
 3. **Vercel target**: no team/project currently visible to this session —
    confirm which Vercel account/team the CRM should deploy under when
    deployment is set up.
+4. **Auth leaked-password protection**: Supabase's security advisor flags
+   this as disabled (checks new passwords against HaveIBeenPwned). Cheap to
+   enable, not urgent — a Dashboard → Authentication → Policies toggle, not a
+   migration, so not done unilaterally. Recommend enabling it.

@@ -39,15 +39,14 @@ table reflects reality as of the Claude Code continuation.
 | Phase | Status |
 |---|---|
 | 0 — Discovery & architecture | Done |
-| 1 — Foundation (Next.js/auth/RBAC/layout) | Done, build-verified (`npm run build`/`typecheck`/`lint` all pass) |
-| 2 — CRM | Done: database + Customers/Leads application UI (list, create, edit, detail, search, tags, notes, timeline, lead conversion) |
-| 3–11 | Not started |
+| 1 — Foundation (Next.js/auth/RBAC/layout) | Done, build-verified, live-verified with a real owner account |
+| 2 — CRM | Done: database + Customers/Leads application UI. Live-verified end-to-end in a real browser (create/edit/tag/note/convert all confirmed against production Supabase, test data cleaned up after) |
+| 3 — Services/Bookings/Payments | Schema + application UI done for Services (full CRUD) and Bookings (full CRUD, writes timeline activities). Payments is read-only by design (D-014) — no Square/Shopify credentials exist yet, so there's nothing to sync in; webhook handlers are the remaining work once credentials arrive |
+| 4–11 | Not started |
 
-Still open: no owner account exists yet (no self-service path by design,
-D-003 — needs the one manual step in `docs/CLAUDE_CODE_START.md`), and this
-repo is still not pushed to GitHub (no `gh` CLI or token in this
-environment either — same manual step needed as before, see
-`docs/CLAUDE_CODE_START.md`).
+Resolved: repo is pushed to GitHub (`disco-sundays-crm`, verified via
+`git fetch`) and an owner account exists and was verified working live
+(sign-in, dashboard, RLS/RBAC all confirmed for the `owner` role).
 
 ## D. Exact completed work
 
@@ -77,11 +76,12 @@ environment either — same manual step needed as before, see
 
 ## E. Exact incomplete work
 
-Customers/Leads application UI is now done (see section C). Remaining, in
-spec order: Services/Bookings/Payments + Square integration, Gallery
-system, Shopify integration, Memberships, Referrals/Rewards, Base44
-migration, Automation engine, Reporting, Production hardening. None of
-these have any code written yet.
+Customers/Leads and Services/Bookings/Payments application UI are now done
+(see section C). Remaining, in spec order: Square/Shopify webhook sync
+(schema/RLS ready, blocked on credentials — D-014), Gallery system,
+Shopify integration, Memberships, Referrals/Rewards, Base44 migration,
+Automation engine, Reporting, Production hardening. None of these have any
+code written yet.
 
 ## F. Architecture
 
@@ -373,17 +373,19 @@ connected system (`docs/SECURITY.md` §10).
 
 ## AH. Exact next implementation phase
 
-Phases 0–2 are done (section C). Remaining manual steps (both documented in
-`docs/CLAUDE_CODE_START.md`, neither blocks further phase work): push this
-repo to GitHub, and create+promote the first owner account.
+Phases 0–3 are done (section C); both prior manual steps (GitHub push,
+owner account) are resolved.
 
-Next: **Phase 3 — Services / Bookings / Payments + Square integration
-architecture**, per `docs/PROJECT_SPEC.md` §7 and the schema in
-`docs/DATABASE.md`'s Phase 3 section (`services`, `bookings`, `payments`,
-`refunds`, `webhook_events`). Square credentials are not available in this
-environment (`docs/CLAUDE_CODE_HANDOFF.md` section M) — build the schema,
-RLS, and application UI first (services catalog, booking records,
-payment records against real data with no live sync yet), and stop for the
-credential-intake protocol (`docs/SECURITY.md` §9) only when the webhook/
-sync code itself needs a real token. Continue phase by phase per RULE 7,
-testing and committing at each boundary.
+Next: **Phase 4 — Gallery system** (high priority — Effsight replacement),
+per `docs/PROJECT_SPEC.md` §17–21 and `docs/ARCHITECTURE.md` §5: Supabase
+Storage buckets (`gallery-public`/`gallery-private`), `galleries`/
+`gallery_assets`/`gallery_access`/`gallery_views` tables, upload flow,
+public `/gallery/[slug]` + `/embed/gallery/[id]` routes, signed URLs for
+private media. `projects` (cross-cutting, needed before galleries can
+reference them properly per `docs/DATABASE.md`) should land first or
+alongside. No blocked credentials for this phase — it's pure CRM-native
+work. Square/Shopify webhook handlers remain parked on credentials (D-014)
+but aren't blocking; pick them up whenever those arrive. Continue phase by
+phase per RULE 7, testing (including live browser verification against
+production Supabase, not just build-passing) and committing at each
+boundary.

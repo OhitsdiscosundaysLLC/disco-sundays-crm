@@ -3,6 +3,47 @@
 All notable changes to the Disco Sundays CRM project are recorded here,
 newest first.
 
+## Claude Code handoff continuation — Phase 3 (Services/Bookings/Payments) — 2026-09-23
+
+- **Infrastructure resolved**: user created the `disco-sundays-crm` GitHub
+  repo and pushed the local history; verified with a real `git fetch`
+  (`origin/main` matches local `main` exactly, all 3 prior commits present).
+  User also created the first Supabase Auth account and it was promoted to
+  `owner` via the documented one-time manual SQL update (D-003) — verified
+  live: signed in, dashboard loads with real (zero) counts, RBAC/RLS confirmed
+  working end-to-end for the owner role (see next bullet).
+- **Live end-to-end verification of Phase 2** (not just build-passing):
+  using the real owner account in a real browser against the live Supabase
+  project, created a customer, added/removed a tag, added/deleted a note,
+  edited the customer, created a lead, and converted it to a customer —
+  every step produced the correct database row and the correct timeline
+  activity, confirming the `activities` RLS fix (D-012) actually works, not
+  just compiles. All test records were deleted afterward — nothing left in
+  the production database beyond what a real user creates going forward.
+- **Database**: applied `0006_phase3_services_bookings_payments.sql` —
+  `services`, `booking_statuses`, `bookings`, `payments`, `refunds`,
+  `webhook_events`. Extended the `activities` insert policy to cover
+  bookings the same way customers already were. Advisors re-ran clean
+  (only the two pre-existing accepted warnings plus one new one: Supabase's
+  leaked-password-protection toggle, a Dashboard setting, not a migration —
+  see D-014's open-questions note).
+- **Services**: full CRUD application UI (list, create, edit, archive).
+- **Bookings**: full CRUD application UI — customer/service/staff pickers,
+  configurable status, payment status; every create/update/cancel writes a
+  customer timeline activity. No live Square sync yet (no credentials, per
+  `docs/INTEGRATIONS.md`) — bookings are entered directly in the CRM for now,
+  honestly labeled as such in the UI.
+- **Payments**: read-only application UI. Per D-014, the `payments` table has
+  no insert policy for authenticated users — a payment record can only ever
+  come from a future Square/Shopify webhook handler, never fabricated by
+  staff. Shows an honest empty state, not a fake "add payment" form.
+- **Verification**: build/typecheck/lint all pass. Every new flow
+  (service create, booking create against a real customer + service) was
+  exercised live in the browser against production Supabase and confirmed
+  correct, then cleaned up.
+- **Not done in this pass**: Square/Shopify webhook handlers (blocked on
+  credentials, architecture is ready per D-014), Vercel deployment.
+
 ## Claude Code handoff continuation — Phase 2 application layer — 2026-09-23
 
 Picked up the Cowork handoff (see `docs/CLAUDE_CODE_HANDOFF.md`). Verified

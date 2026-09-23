@@ -87,6 +87,110 @@ export type Database = {
           },
         ]
       }
+      booking_statuses: {
+        Row: {
+          is_terminal: boolean
+          label: string
+          slug: string
+          sort_order: number
+        }
+        Insert: {
+          is_terminal?: boolean
+          label: string
+          slug: string
+          sort_order: number
+        }
+        Update: {
+          is_terminal?: boolean
+          label?: string
+          slug?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      bookings: {
+        Row: {
+          created_at: string
+          customer_id: string
+          date: string
+          deleted_at: string | null
+          end_time: string | null
+          external_square_booking_id: string | null
+          id: string
+          location: string | null
+          notes: string | null
+          payment_status: string
+          service_id: string
+          staff_id: string | null
+          start_time: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          date: string
+          deleted_at?: string | null
+          end_time?: string | null
+          external_square_booking_id?: string | null
+          id?: string
+          location?: string | null
+          notes?: string | null
+          payment_status?: string
+          service_id: string
+          staff_id?: string | null
+          start_time?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          date?: string
+          deleted_at?: string | null
+          end_time?: string | null
+          external_square_booking_id?: string | null
+          id?: string
+          location?: string | null
+          notes?: string | null
+          payment_status?: string
+          service_id?: string
+          staff_id?: string | null
+          start_time?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bookings_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_status_fkey"
+            columns: ["status"]
+            isOneToOne: false
+            referencedRelation: "booking_statuses"
+            referencedColumns: ["slug"]
+          },
+        ]
+      }
       customer_tags: {
         Row: {
           created_at: string
@@ -328,6 +432,62 @@ export type Database = {
           },
         ]
       }
+      payments: {
+        Row: {
+          amount: number
+          created_at: string
+          currency: string
+          customer_id: string
+          id: string
+          metadata: Json
+          paid_at: string | null
+          provider: string
+          provider_transaction_id: string
+          related_id: string | null
+          related_type: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          currency?: string
+          customer_id: string
+          id?: string
+          metadata?: Json
+          paid_at?: string | null
+          provider: string
+          provider_transaction_id: string
+          related_id?: string | null
+          related_type?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          currency?: string
+          customer_id?: string
+          id?: string
+          metadata?: Json
+          paid_at?: string | null
+          provider?: string
+          provider_transaction_id?: string
+          related_id?: string | null
+          related_type?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -370,6 +530,41 @@ export type Database = {
         }
         Relationships: []
       }
+      refunds: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          payment_id: string
+          provider_refund_id: string | null
+          reason: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          payment_id: string
+          provider_refund_id?: string | null
+          reason?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          payment_id?: string
+          provider_refund_id?: string | null
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "refunds_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       role_permissions: {
         Row: {
           can_create: boolean
@@ -397,6 +592,57 @@ export type Database = {
         }
         Relationships: []
       }
+      services: {
+        Row: {
+          active: boolean
+          category: string | null
+          created_at: string
+          currency: string
+          deleted_at: string | null
+          description: string | null
+          duration_minutes: number | null
+          external_square_service_id: string | null
+          id: string
+          internal_notes: string | null
+          name: string
+          price: number | null
+          shopify_product_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          category?: string | null
+          created_at?: string
+          currency?: string
+          deleted_at?: string | null
+          description?: string | null
+          duration_minutes?: number | null
+          external_square_service_id?: string | null
+          id?: string
+          internal_notes?: string | null
+          name: string
+          price?: number | null
+          shopify_product_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          category?: string | null
+          created_at?: string
+          currency?: string
+          deleted_at?: string | null
+          description?: string | null
+          duration_minutes?: number | null
+          external_square_service_id?: string | null
+          id?: string
+          internal_notes?: string | null
+          name?: string
+          price?: number | null
+          shopify_product_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       tags: {
         Row: {
           created_at: string
@@ -412,6 +658,42 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+        }
+        Relationships: []
+      }
+      webhook_events: {
+        Row: {
+          error: string | null
+          event_type: string
+          id: string
+          payload: Json
+          processed_at: string | null
+          provider: string
+          provider_event_id: string
+          received_at: string
+          status: string
+        }
+        Insert: {
+          error?: string | null
+          event_type: string
+          id?: string
+          payload: Json
+          processed_at?: string | null
+          provider: string
+          provider_event_id: string
+          received_at?: string
+          status?: string
+        }
+        Update: {
+          error?: string | null
+          event_type?: string
+          id?: string
+          payload?: Json
+          processed_at?: string | null
+          provider?: string
+          provider_event_id?: string
+          received_at?: string
+          status?: string
         }
         Relationships: []
       }

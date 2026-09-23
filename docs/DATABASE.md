@@ -122,18 +122,29 @@ No new tables. Auth relies entirely on Supabase Auth + `profiles` +
   never added the insert policy, so the application couldn't write a single
   timeline row. Fixed additively — see `docs/DECISIONS.md` D-012.
 
-## Phase 3 — Services / Bookings / Payments
+## Phase 3 — Services / Bookings / Payments (applied — `supabase/migrations/0006_phase3_services_bookings_payments.sql`)
 - `services` — name, description, category, price, duration_minutes, active,
-  external_square_service_id, shopify_product_id, internal_notes.
+  external_square_service_id, shopify_product_id, internal_notes. CRM-owned
+  catalog; application UI is full CRUD (list/create/edit/archive).
+- `booking_statuses` — configurable lookup table (pending/confirmed/
+  completed/cancelled/no_show), same pattern as `lead_statuses` (D-010).
 - `bookings` — customer_id, service_id, date, start_time, end_time, staff_id
-  (→ profiles), location, status (configurable lookup: pending/confirmed/
-  completed/cancelled/no-show), payment_status, external_square_booking_id,
-  notes.
-- `payments` — customer_id, amount, currency, provider (`square`|`shopify`),
-  provider_transaction_id, status, paid_at, related booking/order/project via
-  nullable FKs + a `related_type` discriminator, refund info, metadata jsonb.
-  No card data ever stored — provider transaction IDs only.
+  (→ profiles), location, status (→ `booking_statuses`), payment_status
+  (check constraint: unpaid/partial/paid/refunded), external_square_booking_id,
+  notes. Can be created directly in the CRM (no Square ID required) or synced
+  from Square once that integration exists — see D-011. Application UI is
+  full CRUD; every create/update/cancel writes a customer timeline activity.
+- `payments` — customer_id, amount, currency, provider (`square`|`shopify`
+  only — the CRM never invents a payment channel, D-011), provider_transaction_id,
+  status, paid_at, related booking/order/project via a nullable `related_id` +
+  `related_type` discriminator (intentionally not FK-constrained, it's
+  polymorphic), metadata jsonb. No card data ever stored — provider
+  transaction IDs only. **No insert policy for authenticated users** — a
+  payment row can only ever be written by a future webhook handler using the
+  service role, same posture as `audit_logs`. Application UI is read-only
+  until Square/Shopify sync exists, showing an honest empty state.
 - `refunds` — payment_id, amount, reason, provider_refund_id, created_at.
+  Same read-only posture as `payments`.
 
 ## Phase 4 — Galleries (high priority — replaces Effsight)
 - `galleries` — title, customer_id, project_id (nullable until Phase 6/project
@@ -155,7 +166,7 @@ actually introduced here since Shopify is the first webhook producer) if not
 already created for Square in Phase 3. In practice `webhook_events` is created
 in Phase 3 (Square is the first webhook integration) and reused by Shopify.
 
-### `webhook_events` (created Phase 3, used by Square + Shopify)
+### `webhook_events` (applied Phase 3 — `0006_phase3_services_bookings_payments.sql`, used by Square + Shopify)
 | column | type |
 |---|---|
 | id | uuid PK |
