@@ -290,6 +290,65 @@ rather than the `SQUARE_PRODUCTION_*` names in the original `.env.example`
 templates). The user's names are adopted as canonical going forward —
 `.env.example` updated to match rather than asking for a rename.
 
+## D-020 — Integrations status table + Settings UI built; Square connectivity confirmed live
+
+**Context**: `docs/DATABASE.md`'s cross-cutting section and spec §34
+describe an "Integrations settings page" showing connection status per
+provider — planned but never built. With Square credentials now
+configured, this was the natural moment: a real "Test connection" action
+needed somewhere to write its result, and a place to show it.
+**Decision**: Built `integrations` (provider/status/last_checked_at/
+metadata — metadata holds only non-sensitive diagnostics like location
+count, never tokens) and wired a "Test connection" button on the Square
+row in Settings to `lib/integrations/square/client.ts`'s
+`checkSquareConnection()` — a strictly read-only `GET /v2/locations` call.
+**Verified live, in a real browser, with the real production credentials**:
+clicked "Test connection," confirmed via direct database read that the
+row updated to `status: 'connected'`, `location_count: 2`, and — this
+caught a real, separate bug — `configured_location_found: false`.
+**Finding**: `SQUARE_LOCATION_ID` in `apps/web/.env.local` is
+`BRQ3J5MYKNYX`, missing the leading `L` from the real location ID
+`LBRQ3J5MYKNYX` ("Hanover, MD", confirmed active via the API). Not a
+security issue — location IDs aren't secret — flagged directly to the user
+for a one-character fix; not corrected automatically since editing the
+user's `.env.local` wasn't asked for.
+**Not built yet**: the actual customer/booking/payment sync adapter and
+webhook route — this is connectivity verification only, per the explicit
+instruction to prove read access before building further, and webhook
+registration explicitly waits for approval (D-014).
+
+## D-021 — Shopify auth corrected to the Dev Dashboard client-credentials model
+
+**Context**: The Phase 7 Shopify inspection (D-020's companion CHANGELOG
+entry) recommended a Custom App with a static Admin API access token —
+the traditional model. The user then reported creating the app in
+Shopify's **Dev Dashboard** instead, which uses a different, newer auth
+model. Before writing any code, this was verified against Shopify's own
+current documentation (not assumed): since January 2026, every new
+Shopify custom app is created in the Dev Dashboard and issues a
+**Client ID + Client Secret**, not a static token. The app exchanges these
+for a short-lived access token via the OAuth 2.0 client-credentials grant
+(`POST {shop}/admin/oauth/access_token`, form-encoded
+`grant_type=client_credentials`, token expires in ~24h) — confirmed at
+<https://shopify.dev/docs/apps/build/dev-dashboard/get-api-access-tokens>.
+**Decision**: Implemented `lib/integrations/shopify/client.ts` against this
+model — token exchange, in-memory caching until expiry (never persisted),
+and a read-only verification call (`checkShopifyConnection()`, sampling 3
+each of customers/orders/products via GraphQL — exactly the scopes
+requested, nothing written to Shopify or synced into the CRM yet). Env var
+names updated in both `.env.example` files to
+`SHOPIFY_STORE_DOMAIN`/`SHOPIFY_CLIENT_ID`/`SHOPIFY_CLIENT_SECRET`/
+`SHOPIFY_API_VERSION`, matching what the user specified and what their
+actual Dev Dashboard app provides.
+**Verified**: the graceful "not configured" path (credentials not yet set)
+— confirmed live in a browser via the Settings "Test connection" button,
+which correctly wrote `status: 'error'` with a clear message and no crash.
+Live authentication itself is not yet verified — the Client ID/Secret
+pasted into chat by the user were never used or stored (same rule as every
+other credential this session), so real values still need to be entered
+directly into `apps/web/.env.local` before this can be proven end-to-end
+the way Square was.
+
 ---
 
 ## Open questions for the user (not decided unilaterally)
@@ -302,22 +361,31 @@ inferred, per RULE 6 — flagged rather than guessed:
    `origin/main` matches local `main` exactly). (D-001)
 2. ~~**`SUPABASE_SERVICE_ROLE_KEY`**~~ — resolved 2026-09-24, configured
    and verified working. (D-019)
-3. **Square credentials**: configured in `apps/web/.env.local` as of
-   2026-09-24 (`SQUARE_APPLICATION_ID`/`SQUARE_ACCESS_TOKEN`/
-   `SQUARE_APPLICATION_SECRET`/`SQUARE_LOCATION_ID` — see D-019 for the
-   naming note) but not yet verified working or wired into any integration
-   code. `SQUARE_WEBHOOK_SIGNATURE_KEY` still outstanding (needed only once
-   a webhook subscription is actually registered with Square, which is a
-   write/config action on the live account requiring explicit approval).
+3. ~~**Square credentials**~~ — resolved 2026-09-24: configured, and
+   connectivity verified live (D-020). One small non-secret data issue
+   found: `SQUARE_LOCATION_ID` has a typo (missing leading `L`) — see
+   D-020 for the exact fix. `SQUARE_WEBHOOK_SIGNATURE_KEY` still
+   outstanding (needed only once a webhook subscription is actually
+   registered, a write/config action requiring explicit approval first).
 4. **Base44 credentials**: still not available. Needed before Phase 8
    (Base44) can move from architecture to live integration.
-5. **Shopify credentials**: still not available (`SHOPIFY_API_KEY` or a
-   Custom App Admin API access token, plus `SHOPIFY_WEBHOOK_SECRET`).
-   Needed before Phase 5 (Shopify) can move from architecture to live
-   integration.
-6. **Vercel target**: no team/project currently visible to this session —
-   confirm which Vercel account/team the CRM should deploy under when
-   deployment is set up.
+5. **Shopify credentials**: a Shopify Dev Dashboard app ("Disco Sundays
+   CRM") now exists, but the credential values (Client ID/Secret) were
+   pasted into chat and, per this project's standing rule, were never
+   used or stored — see the chat record for 2026-09-24. Still not
+   configured anywhere reachable by this project. Get them from the
+   Shopify Dev Dashboard app's credentials page; put them in
+   `apps/web/.env.local` / Vercel env vars as `SHOPIFY_STORE_DOMAIN`
+   (the `*.myshopify.com` domain, not `discosundays.com`),
+   `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`, `SHOPIFY_API_VERSION`.
+6. **Vercel target**: confirmed blocked, not just unconfigured — the
+   Vercel MCP connector reports zero teams and zero projects visible to
+   this session, account-wide, and a direct lookup of a project named
+   `disco-sundays-crm` 404s. Cannot create a project without a team ID to
+   create it under. Either authorize Vercel access for this session, or
+   create the project directly at vercel.com (Add New → Project → Import
+   Git Repository → `OhitsdiscosundaysLLC/disco-sundays-crm`, root
+   directory `apps/web`).
 7. **Auth leaked-password protection**: Supabase's security advisor flags
    this as disabled (checks new passwords against HaveIBeenPwned). Cheap to
    enable, not urgent — a Dashboard → Authentication → Policies toggle, not a

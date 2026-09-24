@@ -48,38 +48,49 @@ written. **Nothing exists yet**:
 - No `SHOPIFY_*` variables are set in `apps/web/.env.local`.
 - No Shopify webhooks are registered anywhere reachable from this project.
 
-**Recommended integration approach** — a Shopify **Custom App**, not a
-public OAuth app: this is a single-store internal integration (Disco
-Sundays' own CRM talking to Disco Sundays' own store), so a Custom App
-created directly in Shopify Admin → Settings → Apps and sales channels →
-Develop apps issues an Admin API access token directly. No `API_KEY`/
-`API_SECRET` OAuth pair is needed — that pattern is for public apps
-distributed to other merchants, which this isn't. Use the **GraphQL Admin
-API** (current, versioned quarterly) per the user's explicit instruction,
-not the legacy REST Admin API.
+**Integration approach — corrected 2026-09-24 (D-021)**: the user created
+the app in Shopify's **Dev Dashboard** ("Disco Sundays CRM"), which is the
+current path for a single-store internal integration and uses a different
+auth model than originally recommended below. Verified against Shopify's
+own current docs before implementing: since January 2026, every new
+Shopify custom app is created in the Dev Dashboard and issues a
+**Client ID + Client Secret**, not a static Admin API token — the old
+"copy an access token" flow no longer exists. The app exchanges its
+Client ID/Secret for a short-lived access token via the OAuth 2.0
+client-credentials grant (`POST {shop}/admin/oauth/access_token`,
+form-encoded `grant_type=client_credentials`, ~24h expiry). Reference:
+<https://shopify.dev/docs/apps/build/dev-dashboard/get-api-access-tokens>.
+Implemented in `apps/web/lib/integrations/shopify/client.ts` — token
+exchange with in-memory caching (never persisted), plus a read-only
+verification call against the **GraphQL Admin API** per the user's
+explicit instruction, not the legacy REST Admin API.
 
-**Environment variables needed** (names updated in both `.env.example`
-files to match this recommendation):
+**Environment variables** (names match what the user's Dev Dashboard app
+actually provides, updated in both `.env.example` files):
 - `SHOPIFY_STORE_DOMAIN` — the `*.myshopify.com` domain (not the storefront
-  domain `discosundays.com` — GraphQL Admin API calls target the
-  `.myshopify.com` hostname regardless of the storefront's custom domain).
-- `SHOPIFY_ADMIN_ACCESS_TOKEN` — the Custom App's Admin API access token
-  (starts `shpat_`), generated after the app is created and installed.
-- `SHOPIFY_API_VERSION` — pin explicitly (e.g. `2025-01`); GraphQL Admin
-  API versions roll quarterly and pinning avoids silent breakage.
+  domain `discosundays.com`).
+- `SHOPIFY_CLIENT_ID` — permanent, not treated as secret by Shopify but
+  still kept server-only here.
+- `SHOPIFY_CLIENT_SECRET` — server-only, never exposed to the browser.
+- `SHOPIFY_API_VERSION` — pin explicitly (the Dev Dashboard app currently
+  shows `2026-07`).
 - `SHOPIFY_WEBHOOK_SECRET` — only needed once webhook subscriptions are
   actually registered (a write/config action on the live store requiring
   explicit approval first, same posture as Square webhook registration).
 
 **Minimum API scopes** (read-only — the CRM never writes back to Shopify,
 per the source-of-truth rules above): `read_customers`, `read_orders`,
-`read_products`. No `write_*` scopes needed for the sync described here.
+`read_products`. No `write_*` scopes requested or needed.
 
-**Does the user need to create/install anything?** Yes — a Custom App
-must be created and installed in the Shopify Admin before any credential
-exists to configure. This is the one manual step; everything after it
-(adapter code, webhook route, sync logic) is build work Claude Code can do
-without further owner involvement.
+**Manual steps remaining**: the app already exists (done). The Client
+ID/Secret were pasted into chat and, per this project's standing rule,
+were never used or stored — get fresh values from the Dev Dashboard app's
+credentials page and put them directly into `apps/web/.env.local` /
+Vercel env vars. The app's placeholder App URL (`https://example.com`)
+should be updated to the real production URL once Vercel deployment is
+resolved — do not release a new app version until the user confirms that
+URL and approves the change (per the user's explicit instruction not to
+touch the Shopify app version yet).
 
 **Webhooks required once the app exists**: `orders/create`, `orders/updated`
 (order + payment-status sync), `customers/create`, `customers/update`

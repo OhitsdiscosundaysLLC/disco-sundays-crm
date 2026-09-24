@@ -247,9 +247,11 @@ mechanism required by spec §13/§14/§35.
   customer_id, project_id, due_date, priority, status, completed_at.
 - `projects` — moved up into the Phase 4 section above (built alongside
   galleries, which reference it).
-- `integrations` — provider, status (connected/not_connected/error),
-  connected_at, metadata jsonb (never raw secrets — those live only in env
-  vars / Supabase Vault, see `SECURITY.md`).
+- `integrations` (applied — `0011_integrations_status.sql`) — provider,
+  status (connected/not_connected/error), last_checked_at, connected_at,
+  metadata jsonb (never raw secrets — those live only in env vars, see
+  `SECURITY.md`). Backs the Settings → Integrations "Test connection"
+  action for Square (live-verified) and Shopify (D-020/D-021).
 
 ## Customer matching / duplicate prevention (spec §33)
 

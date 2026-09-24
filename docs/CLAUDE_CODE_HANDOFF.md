@@ -45,18 +45,30 @@ table reflects reality as of the Claude Code continuation.
 | 4 — Projects + Galleries | Schema + full management UI done (create/publish/upload/cover/delete). Public `/gallery/[slug]` + `/embed/gallery/[id]` routes are built but need `SUPABASE_SERVICE_ROLE_KEY` (still not set anywhere — see below) to actually serve content — currently show an honest "not configured" message. Live-verified: customer/gallery/project creation, settings, publish/unpublish all confirmed against production Supabase. File upload and the public password gate itself weren't exercised (no file-picker in this sandbox's browser automation; service key not set) |
 | 6 — Memberships | Done: schema + full CRUD UI (plans, memberships, live-computed usage from bookings). RLS verified via direct database simulation (see Phase 7 row — same method) |
 | 7 — Referrals & Rewards | Done: schema + full UI (referral codes, qualification workflow, append-only reward ledger, idempotent "issue reward" action). RLS verified via direct database simulation — real bug found and fixed same-pass (reward-balance trigger function was directly RPC-callable, revoked). `SUPABASE_SERVICE_ROLE_KEY` configured and verified live via the public gallery routes (first real end-to-end proof they work) |
-| 5, 8–11 | Not started (5 = Shopify — inspected, not built; 8 = Base44, 9 = Automation, 10 = Reporting, 11 = Production hardening) |
+| Integrations status | Done: `integrations` table + Settings "Test connection" UI (spec §34). Square connectivity verified live with real production credentials (found a real, non-secret `SQUARE_LOCATION_ID` typo along the way). Shopify client built for the Dev Dashboard client-credentials auth model (corrected after verifying against Shopify's current docs) — code verified for graceful "not configured" behavior; live auth not yet provable, no Shopify credentials exist anywhere reachable by this project |
+| 5 (Shopify), 8–11 | Architecture/inspection done for Shopify (see Integrations status row); full sync not started. 8 = Base44, 9 = Automation, 10 = Reporting, 11 = Production hardening — not started |
 
-**Credential incident (2026-09-24)**: the user pasted real production
-Supabase and Square credentials directly into chat. None were used,
-stored, or written anywhere — see `docs/CHANGELOG.md`'s Phase 6 entry and
-`docs/DECISIONS.md` D-019 for the full account. **Resolved properly later
-the same day**: the user added `SUPABASE_SERVICE_ROLE_KEY` and Square
-production credentials to `apps/web/.env.local` directly (never through
-chat). Presence verified by variable name only, values never seen. Square
-variable names differ slightly from this project's original templates —
-see D-019, both `.env.example` files updated to match what's actually
-configured. Shopify and Base44 credentials remain outstanding.
+**Credential incidents (2026-09-24, twice)**: the user pasted real
+production Supabase, Square, and (separately, later) Shopify credentials
+directly into chat, three times total across the session. None were ever
+used, stored, or written anywhere — see `docs/CHANGELOG.md`'s Phase 6/7
+and "Integrations status" entries, and `docs/DECISIONS.md` D-019/D-021.
+Supabase + Square were **resolved properly** the same day: the user added
+them to `apps/web/.env.local` directly (never through chat), verified
+present by name only, and Square connectivity was proven live (found a
+real, non-secret `SQUARE_LOCATION_ID` typo along the way — see D-020).
+Shopify credentials remain outstanding — the user should regenerate the
+pasted Client Secret (treat it as exposed) and enter fresh values directly
+into `apps/web/.env.local`. Base44 credentials also remain outstanding.
+
+**Vercel (2026-09-24)**: confirmed genuinely blocked, not just
+unconfigured — the Vercel MCP connector reports zero teams and zero
+projects visible to this session, account-wide. Cannot create a project
+without a team ID. See the open questions in `docs/DECISIONS.md` for the
+exact action needed. This blocks resolving the production URL, which in
+turn blocks updating the Shopify Dev Dashboard app's App URL (currently
+the `https://example.com` placeholder) — the user explicitly asked not to
+release a new Shopify app version until that's resolved and approved.
 
 Resolved: repo is pushed to GitHub (`disco-sundays-crm`, verified via
 `git fetch`) and an owner account exists and was verified working live
@@ -395,34 +407,39 @@ connected system (`docs/SECURITY.md` §10).
 
 ## AH. Exact next implementation phase
 
-Phases 0–4, 6, and 7 are done (section C). `SUPABASE_SERVICE_ROLE_KEY` and
-Square production credentials are configured in `apps/web/.env.local`
-(verified present by name; Supabase key verified working live). Square
-credentials themselves are not yet verified working — that's the
-immediate next step.
+Phases 0–4, 6, 7, and Integrations status are done (section C).
+`SUPABASE_SERVICE_ROLE_KEY` and Square credentials are configured and
+Square connectivity is verified live (`lib/integrations/square/client.ts`,
+Settings → Integrations → Test connection). Shopify's client is built
+(`lib/integrations/shopify/client.ts`) but not yet live-tested — no
+credentials exist for it yet.
 
-Next: **Square integration**, in this order —
-1. Read-only connectivity verification (e.g. a `GET /v2/locations` or
-   merchant-info call) using `SQUARE_ACCESS_TOKEN`, confirming the
-   credentials actually authenticate against the production API. Read-only
-   per the standing production-safety rule — no bookings/payments/customers
-   created or modified just to prove connectivity.
-2. Adapter module (`lib/integrations/square/`) + webhook route with
-   signature verification, written and unit-testable but **not registered**
-   with Square yet — registering a webhook subscription is a write/config
-   change to the live account and needs explicit approval first.
-3. Sync architecture respecting D-011 (Square owns bookings/payments/
-   services where Square-managed; CRM stores the synchronized
-   representation) and D-005 (`webhook_events` idempotency table, already
-   built in Phase 3).
+Genuinely blocked on the user: **Vercel** (zero teams/projects visible to
+this session — see the credential/Vercel notes above) and **Shopify
+credentials** (Client ID/Secret pasted into chat, never used — need fresh
+values entered directly into `apps/web/.env.local`). Neither blocks
+everything else.
 
-After Square, per the user's stated priority order: Tasks, Reports, Global
-Search, Automation engine, then Shopify (Custom App + GraphQL Admin API —
-see the Shopify inspection in `docs/CHANGELOG.md`'s Phase 7 entry for the
-exact scopes/variables/setup steps) and Base44/n8n once credentials exist.
+Next, in order —
+1. **Square sync adapter**: customer/booking/payment read sync respecting
+   D-011 (Square owns bookings/payments/services where Square-managed) and
+   D-005 (`webhook_events` idempotency table, already built in Phase 3).
+   Webhook route with signature verification can be written and unit-
+   tested, but **not registered** with Square — that's a write/config
+   change to the live account requiring explicit approval.
+2. Per the user's stated priority order: Tasks, Reports, Global Search,
+   Automation engine.
+3. Once Vercel is resolved: deploy, get the real production URL, update
+   the Shopify Dev Dashboard app's App URL (currently the `example.com`
+   placeholder) — only with the user's explicit approval, and only that
+   field, not a new app version otherwise.
+4. Once Shopify credentials are configured: verify connectivity live the
+   same way Square was, then build the Shopify sync adapter.
+5. Base44/n8n once credentials exist for those.
+
 Continue phase by phase per RULE 7, testing at each boundary. Live browser
-verification requires a fresh sign-in from the owner (the session used in
-Phases 1–4 expired partway through Phase 6) — if browser testing isn't
-possible, fall back to the direct-RLS-simulation method used for Phases 6
-and 7 (documented in their CHANGELOG entries) rather than skipping
-verification entirely.
+verification requires a signed-in session — it's been intermittently
+available this session (sometimes still valid, sometimes not); when
+unavailable, fall back to the direct-RLS-simulation method used for
+Phases 6 and 7 (documented in their CHANGELOG entries) rather than
+skipping verification entirely.

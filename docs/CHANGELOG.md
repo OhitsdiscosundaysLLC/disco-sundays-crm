@@ -3,6 +3,65 @@
 All notable changes to the Disco Sundays CRM project are recorded here,
 newest first.
 
+## Claude Code handoff continuation — Integrations status + Shopify Dev Dashboard — 2026-09-24 (second pass)
+
+- **Second credential-exposure incident**: the user pasted a Shopify
+  Client ID and Client Secret directly into chat. Same response as the
+  first incident (Phase 6/7's Supabase+Square paste): neither value was
+  used, stored, echoed, or written anywhere. User told to treat the
+  secret as exposed and regenerate it from the Dev Dashboard, then enter
+  fresh values directly into `apps/web/.env.local` / Vercel — never
+  through chat.
+- **Vercel inspection — genuine blocker found**: the Vercel MCP connector
+  reports zero teams and zero projects visible to this session,
+  account-wide (not just for this repo); a direct lookup of a project
+  named `disco-sundays-crm` 404s. Cannot create a Vercel project without a
+  team ID to create it under, and none is available. Reported as
+  ACTION REQUIRED — either authorize Vercel access for this session, or
+  the user creates the project directly at vercel.com (Import Git
+  Repository → `OhitsdiscosundaysLLC/disco-sundays-crm`, root `apps/web`).
+  Production URL — and therefore the Shopify app's App URL — remains
+  unresolved until this is done.
+- **Square connectivity verified live with real production credentials**
+  (first time, via the new Settings UI below): confirmed authentication
+  works, found a real (non-secret) data bug — `SQUARE_LOCATION_ID` in
+  `apps/web/.env.local` is `BRQ3J5MYKNYX`, missing the leading `L` from
+  the actual location ID `LBRQ3J5MYKNYX` ("Hanover, MD") — flagged to the
+  user for a one-character fix, not corrected automatically.
+- **Built the `integrations` table + Settings status UI** (spec §34,
+  previously undocumented as built): `provider`/`status`/
+  `last_checked_at`/`metadata` (never secrets), seeded for square/shopify/
+  base44. Settings page now shows real connection status per provider with
+  a "Test connection" button (owner/admin only) that performs an actual
+  read-only API call and writes the real result. See D-020.
+- **`lib/integrations/square/client.ts`**: read-only `GET /v2/locations`
+  connectivity check. Verified live in a real browser: clicked "Test
+  connection," confirmed via direct database read that the row updated to
+  `connected` with real location data (no secrets stored).
+- **`lib/integrations/shopify/client.ts`**: built after correcting course
+  on the auth model — the user's app lives in Shopify's newer Dev
+  Dashboard, which uses a Client ID + Client Secret exchanged for a
+  short-lived token via the OAuth client-credentials grant, not the
+  static Admin API token originally assumed. Verified this against
+  Shopify's current documentation before writing any code (not guessed).
+  Read-only verification samples 3 each of customers/orders/products via
+  GraphQL — exactly the requested scopes, nothing written to Shopify,
+  nothing synced into the CRM yet. Verified live: the graceful
+  "not configured" path correctly writes `status: 'error'` with a clear
+  message when credentials are absent (real credentials not tested yet —
+  none exist anywhere reachable by this project, per the incident above).
+  See D-021.
+- **Not done yet, deliberately**: actual customer/booking/payment/order
+  sync adapters for either provider (connectivity proof only, per
+  instruction, before building further); any webhook registration for
+  either provider (explicit approval required first — D-014); the
+  Shopify app's App URL still shows the `https://example.com` placeholder
+  and was **not** touched, per the user's explicit instruction not to
+  release another app version yet.
+- Docs: CHANGELOG, DECISIONS (D-020, D-021), DATABASE, INTEGRATIONS
+  (Shopify section corrected to the Dev Dashboard model), both
+  `.env.example` files.
+
 ## Claude Code handoff continuation — Phase 7 (Referrals & Rewards) — 2026-09-24
 
 - **Credentials configured**: the user added `SUPABASE_SERVICE_ROLE_KEY`

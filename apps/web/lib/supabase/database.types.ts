@@ -468,6 +468,39 @@ export type Database = {
           },
         ]
       }
+      integrations: {
+        Row: {
+          connected_at: string | null
+          created_at: string
+          id: string
+          last_checked_at: string | null
+          metadata: Json
+          provider: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          connected_at?: string | null
+          created_at?: string
+          id?: string
+          last_checked_at?: string | null
+          metadata?: Json
+          provider: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          connected_at?: string | null
+          created_at?: string
+          id?: string
+          last_checked_at?: string | null
+          metadata?: Json
+          provider?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lead_statuses: {
         Row: {
           is_terminal: boolean
