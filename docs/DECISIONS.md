@@ -242,6 +242,54 @@ stays in schema, ready for Phase 9 automation to populate once booking
 completions can trigger it automatically; until then the live query is the
 honest, real (not fabricated) usage signal.
 
+## D-018 — Referral reward amounts are entered per-issuance, not a fixed configured value
+
+**Context**: Reward amounts/qualification rules are not defined by the
+business anywhere (spec RULE 12) — no prior system, doc, or Base44 export
+was available to determine a standard dollar amount.
+**Decision**: Rather than inventing a number or building a settings field
+for "the" referral reward amount (which would still be a guess at the
+right value), the "Issue reward" action on a qualified referral requires
+staff to enter the amount and reason at issuance time. This keeps the
+system honest (no fabricated default) while remaining fully functional
+today. A fixed configured default can be added later once the business
+defines one — it's a small additive change, not a redesign.
+**Decision**: Referral qualification (`pending`/`qualified`/`rejected`) is a
+distinct, separately-permissioned action from reward issuance — marking a
+referral "qualified" never automatically creates a reward transaction. Per
+this session's own instruction: "do not award rewards merely because
+someone clicked a referral link" (and by extension, merely because staff
+marked a referral qualified). A human decides to issue the reward as a
+second, explicit step.
+**Decision**: The public self-service `/r/[code]` → `/join` referral link
+described in `docs/ARCHITECTURE.md` §4 was not built — `/join` (public
+customer registration) doesn't exist anywhere in this project yet, across
+any phase. Building a working-looking link to a page that doesn't exist
+would be decorative functionality (spec RULE 2). Referral codes are
+generated and usable for internal/manual tracking now (customer profile →
+"Generate referral code"); the public flow lands once `/join` is built.
+
+## D-019 — `SUPABASE_SERVICE_ROLE_KEY` configured and verified (2026-09-24)
+
+**Status**: Resolved. The user added `SUPABASE_SERVICE_ROLE_KEY` to
+`apps/web/.env.local` directly (never pasted into chat). Presence was
+verified by name only (`grep` for the key name, never its value).
+**Verified working**: created a temporary public gallery and a temporary
+password-protected private gallery directly in the database, then loaded
+both through the real `/gallery/[slug]` route in a browser against the
+local dev server. The public gallery rendered its real content; the
+private gallery correctly showed the password prompt and correctly
+rejected an incorrect password without leaking content. Both confirm
+`lib/supabase/service.ts`'s `createServiceClient()` is live and RLS
+bypass is scoped exactly as intended (D-015). Test data deleted
+immediately after.
+**Note**: three Square environment variables also arrived, under
+different names than this project's docs originally specified
+(`SQUARE_APPLICATION_ID`/`SQUARE_ACCESS_TOKEN`/`SQUARE_APPLICATION_SECRET`
+rather than the `SQUARE_PRODUCTION_*` names in the original `.env.example`
+templates). The user's names are adopted as canonical going forward —
+`.env.example` updated to match rather than asking for a rename.
+
 ---
 
 ## Open questions for the user (not decided unilaterally)
@@ -252,20 +300,25 @@ inferred, per RULE 6 — flagged rather than guessed:
 1. ~~**GitHub**~~ — resolved 2026-09-23: repo `disco-sundays-crm` created,
    remote connected, local history pushed and verified (`git fetch` confirms
    `origin/main` matches local `main` exactly). (D-001)
-2. **Square / Base44 credentials**: not available in this environment yet.
-   Needed before Square sync (architecture/schema/UI already built, see D-014)
-   and Phase 8 (Base44) can move from architecture to live integration.
-3. **Vercel target**: no team/project currently visible to this session —
+2. ~~**`SUPABASE_SERVICE_ROLE_KEY`**~~ — resolved 2026-09-24, configured
+   and verified working. (D-019)
+3. **Square credentials**: configured in `apps/web/.env.local` as of
+   2026-09-24 (`SQUARE_APPLICATION_ID`/`SQUARE_ACCESS_TOKEN`/
+   `SQUARE_APPLICATION_SECRET`/`SQUARE_LOCATION_ID` — see D-019 for the
+   naming note) but not yet verified working or wired into any integration
+   code. `SQUARE_WEBHOOK_SIGNATURE_KEY` still outstanding (needed only once
+   a webhook subscription is actually registered with Square, which is a
+   write/config action on the live account requiring explicit approval).
+4. **Base44 credentials**: still not available. Needed before Phase 8
+   (Base44) can move from architecture to live integration.
+5. **Shopify credentials**: still not available (`SHOPIFY_API_KEY` or a
+   Custom App Admin API access token, plus `SHOPIFY_WEBHOOK_SECRET`).
+   Needed before Phase 5 (Shopify) can move from architecture to live
+   integration.
+6. **Vercel target**: no team/project currently visible to this session —
    confirm which Vercel account/team the CRM should deploy under when
    deployment is set up.
-4. **Auth leaked-password protection**: Supabase's security advisor flags
+7. **Auth leaked-password protection**: Supabase's security advisor flags
    this as disabled (checks new passwords against HaveIBeenPwned). Cheap to
    enable, not urgent — a Dashboard → Authentication → Policies toggle, not a
    migration, so not done unilaterally. Recommend enabling it.
-5. **`SUPABASE_SERVICE_ROLE_KEY`**: needed for the public gallery route
-   (D-015) to actually serve galleries — the route's code is written but
-   inert without it. Get it from Supabase Dashboard → Project Settings →
-   API → service_role key (server-only, full-access — never share this one
-   the way the anon key is shared). Put it in Vercel's server-side
-   environment variables (and `apps/web/.env.local` for local dev, already
-   gitignored) as `SUPABASE_SERVICE_ROLE_KEY`. Never paste it into chat.

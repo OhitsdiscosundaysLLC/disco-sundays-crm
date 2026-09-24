@@ -3,6 +3,75 @@
 All notable changes to the Disco Sundays CRM project are recorded here,
 newest first.
 
+## Claude Code handoff continuation — Phase 7 (Referrals & Rewards) — 2026-09-24
+
+- **Credentials configured**: the user added `SUPABASE_SERVICE_ROLE_KEY`
+  and Square production credentials to `apps/web/.env.local` directly
+  (never pasted into chat). Presence verified by variable name only. The
+  Square variable names that arrived differ from this project's original
+  `.env.example` templates (no `_PRODUCTION_` infix) — adopted as
+  canonical rather than asking for a rename; both `.env.example` files
+  updated to match. See D-019.
+- **`SUPABASE_SERVICE_ROLE_KEY` verified working**: created a temporary
+  public gallery and a temporary password-protected private gallery
+  directly in the database, loaded both through the real `/gallery/[slug]`
+  route against a local dev server. Public gallery rendered real content;
+  private gallery correctly prompted for a password and correctly rejected
+  an incorrect one. This is the first live proof the public gallery system
+  (built in Phase 4, previously untestable without this key) actually
+  works end to end. Test data deleted immediately after.
+- **Database**: applied `0009_phase7_referrals_rewards.sql` — `referrals`,
+  `reward_accounts`, `reward_transactions`, `customers.referral_code`. Found
+  and fixed a real issue in the same pass this time (not a separate
+  follow-up like prior phases): the advisor caught `apply_reward_transaction()`
+  (the balance-maintaining trigger function) being directly callable via
+  PostgREST RPC — fixed immediately with `0010_phase7_harden_reward_trigger.sql`,
+  same pattern as `0002`'s original hardening of `set_updated_at()`/
+  `handle_new_user()`.
+- **Referrals**: create (referrer/referred/source/code), qualification
+  status management (pending/qualified/rejected), customer timeline
+  integration, admin list + detail views.
+- **Rewards**: append-only ledger (never a mutable balance — D-008,
+  reaffirmed). "Issue reward" action on a qualified referral, idempotent
+  by database constraint (a referral can only be paid once). Reward
+  amounts are entered per-issuance by staff, not a fabricated default — see
+  D-018 for why. Ledger + balances view at `/rewards`. Customer profile
+  page now shows referral code (with a "Generate" action), reward balance,
+  and referrals made.
+- **Known, deliberate gap**: the public `/r/[code]` referral-link redirect
+  described in `docs/ARCHITECTURE.md` §4 was not built — `/join` (public
+  registration) doesn't exist anywhere in this project yet, so a working
+  `/r/[code]` would have nowhere real to send someone. Referral codes work
+  for internal/manual tracking today; the public flow is real architecture
+  waiting on a real destination, not a stub — see D-018.
+- **Verified**: build/typecheck/lint all pass. RLS verified by simulating
+  authenticated Postgres requests (same method introduced in Phase 6,
+  necessary again since the browser session is still expired): referral
+  creation, reward issuance, and the balance trigger all work correctly as
+  the owner role; a duplicate `referral_reward` for the same referral is
+  correctly rejected (idempotency); a self-referral is correctly rejected
+  by the check constraint; `reward_accounts` correctly has no delete
+  policy for authenticated users (confirmed by hitting exactly that
+  restriction during test cleanup, which needed elevated privileges
+  instead). No data left in production.
+- **Shopify inspection performed** (read-only, no code changes) per the
+  user's request: no Shopify integration exists anywhere in this project
+  beyond placeholder ID columns (`customers.shopify_customer_id`,
+  `services.shopify_product_id`, `payments.provider = 'shopify'`) and
+  planned variable names in the root `.env.example`. No SDK/GraphQL client
+  installed, no webhook route, no sync code, nothing configured in
+  `apps/web/.env.local`. Recommended approach: a Shopify **Custom App**
+  (single-store internal integration, not a public OAuth app) using the
+  current GraphQL Admin API, scopes `read_customers`/`read_orders`/
+  `read_products` only (read-only sync, per source-of-truth rules — the
+  CRM never writes back to Shopify). Full findings in this entry's
+  companion chat report; env var names updated in both `.env.example`
+  files to reflect the recommended Custom App token approach
+  (`SHOPIFY_ADMIN_ACCESS_TOKEN` rather than the OAuth `API_KEY`/
+  `API_SECRET` pair, which isn't needed for a Custom App).
+- Docs updated: CHANGELOG, DECISIONS (D-018, D-019), DATABASE, both
+  `.env.example` files.
+
 ## Claude Code handoff continuation — Phase 6 (Memberships) — 2026-09-24
 
 - **Credential handling incident**: the user pasted real production

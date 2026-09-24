@@ -7,6 +7,7 @@ import { customerLabel, formatDate, formatDateTime } from "@/lib/format";
 import { EmptyState } from "@/components/empty-state";
 import { SubmitButton } from "@/components/submit-button";
 import { addNote, addTag, archiveCustomer, deleteNote, removeTag } from "../actions";
+import { generateCustomerReferralCode } from "../../referrals/actions";
 
 export default async function CustomerDetailPage({
   params,
@@ -21,16 +22,18 @@ export default async function CustomerDetailPage({
   const canView = await hasPermission(profile.role, "customers", "view");
   if (!canView) redirect("/customers");
 
-  const [canEdit, canDelete] = await Promise.all([
+  const [canEdit, canDelete, canViewReferrals, canViewRewards] = await Promise.all([
     hasPermission(profile.role, "customers", "edit"),
     hasPermission(profile.role, "customers", "delete"),
+    hasPermission(profile.role, "referrals", "view"),
+    hasPermission(profile.role, "rewards", "view"),
   ]);
 
   const { id } = await params;
   const { error } = await searchParams;
   const supabase = await createClient();
 
-  const [{ data: customer }, { data: tagLinks }, { data: notes }, { data: activities }] =
+  const [{ data: customer }, { data: tagLinks }, { data: notes }, { data: activities }, referralsResult, rewardResult] =
     await Promise.all([
       supabase.from("customers").select("*").eq("id", id).single(),
       supabase
@@ -48,9 +51,22 @@ export default async function CustomerDetailPage({
         .eq("customer_id", id)
         .order("created_at", { ascending: false })
         .limit(30),
+      canViewReferrals
+        ? supabase
+            .from("referrals")
+            .select("id, qualification_status, created_at, referred:referred_customer_id(id, display_name, email, phone)")
+            .eq("referrer_customer_id", id)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: null }),
+      canViewRewards
+        ? supabase.from("reward_accounts").select("balance").eq("customer_id", id).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
 
   if (!customer || customer.deleted_at) notFound();
+
+  const referralsMade = referralsResult.data;
+  const rewardBalance = rewardResult.data?.balance ?? null;
 
   const tags = (tagLinks ?? [])
     .map((link) => link.tags)
@@ -114,6 +130,53 @@ export default async function CustomerDetailPage({
           </div>
         ) : null}
       </section>
+
+      {canViewReferrals || canViewRewards ? (
+        <section className="rounded-lg border border-neutral-200 p-4">
+          <h2 className="text-sm font-medium text-neutral-900">Referrals &amp; Rewards</h2>
+          <dl className="mt-3 space-y-2 text-sm">
+            {canViewReferrals ? (
+              <div className="flex items-center justify-between gap-4 border-b border-neutral-100 pb-2">
+                <dt className="text-neutral-500">Referral code</dt>
+                <dd className="flex items-center gap-2 text-neutral-900">
+                  {customer.referral_code || "—"}
+                  {canEdit ? (
+                    <form action={generateCustomerReferralCode.bind(null, customer.id)}>
+                      <SubmitButton
+                        pendingLabel="…"
+                        className="text-xs text-neutral-500 underline hover:text-neutral-900"
+                      >
+                        {customer.referral_code ? "Regenerate" : "Generate"}
+                      </SubmitButton>
+                    </form>
+                  ) : null}
+                </dd>
+              </div>
+            ) : null}
+            {canViewRewards ? (
+              <div className="flex justify-between gap-4 border-b border-neutral-100 pb-2 last:border-0">
+                <dt className="text-neutral-500">Reward balance</dt>
+                <dd className="text-neutral-900">{rewardBalance !== null ? `$${rewardBalance}` : "$0"}</dd>
+              </div>
+            ) : null}
+          </dl>
+          {canViewReferrals && referralsMade && referralsMade.length > 0 ? (
+            <div className="mt-3 border-t border-neutral-100 pt-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Customers referred</p>
+              <ul className="mt-2 space-y-1">
+                {referralsMade.map((r) => (
+                  <li key={r.id} className="flex justify-between text-sm">
+                    <Link href={`/referrals/${r.id}`} className="text-neutral-700 hover:underline">
+                      {r.referred ? customerLabel(r.referred) : "—"}
+                    </Link>
+                    <span className="text-neutral-500">{r.qualification_status}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="rounded-lg border border-neutral-200 p-4">
         <h2 className="text-sm font-medium text-neutral-900">Tags</h2>

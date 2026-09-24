@@ -251,6 +251,7 @@ export type Database = {
           last_name: string | null
           location: string | null
           phone: string | null
+          referral_code: string | null
           referral_source: string | null
           shopify_customer_id: string | null
           social_links: Json
@@ -274,6 +275,7 @@ export type Database = {
           last_name?: string | null
           location?: string | null
           phone?: string | null
+          referral_code?: string | null
           referral_source?: string | null
           shopify_customer_id?: string | null
           social_links?: Json
@@ -297,6 +299,7 @@ export type Database = {
           last_name?: string | null
           location?: string | null
           phone?: string | null
+          referral_code?: string | null
           referral_source?: string | null
           shopify_customer_id?: string | null
           social_links?: Json
@@ -961,6 +964,64 @@ export type Database = {
           },
         ]
       }
+      referrals: {
+        Row: {
+          code: string | null
+          created_at: string
+          id: string
+          qualification_status: string
+          referred_customer_id: string
+          referrer_customer_id: string
+          related_payment_id: string | null
+          source: string | null
+          updated_at: string
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string
+          id?: string
+          qualification_status?: string
+          referred_customer_id: string
+          referrer_customer_id: string
+          related_payment_id?: string | null
+          source?: string | null
+          updated_at?: string
+        }
+        Update: {
+          code?: string | null
+          created_at?: string
+          id?: string
+          qualification_status?: string
+          referred_customer_id?: string
+          referrer_customer_id?: string
+          related_payment_id?: string | null
+          source?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referrals_referred_customer_id_fkey"
+            columns: ["referred_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referrals_referrer_customer_id_fkey"
+            columns: ["referrer_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referrals_related_payment_id_fkey"
+            columns: ["related_payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       refunds: {
         Row: {
           amount: number
@@ -992,6 +1053,106 @@ export type Database = {
             columns: ["payment_id"]
             isOneToOne: false
             referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reward_accounts: {
+        Row: {
+          balance: number
+          created_at: string
+          customer_id: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          customer_id: string
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          customer_id?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reward_accounts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: true
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reward_transactions: {
+        Row: {
+          actor_id: string | null
+          amount: number
+          created_at: string
+          customer_id: string
+          id: string
+          reason: string | null
+          related_booking_id: string | null
+          related_order_id: string | null
+          related_referral_id: string | null
+          type: string
+        }
+        Insert: {
+          actor_id?: string | null
+          amount: number
+          created_at?: string
+          customer_id: string
+          id?: string
+          reason?: string | null
+          related_booking_id?: string | null
+          related_order_id?: string | null
+          related_referral_id?: string | null
+          type: string
+        }
+        Update: {
+          actor_id?: string | null
+          amount?: number
+          created_at?: string
+          customer_id?: string
+          id?: string
+          reason?: string | null
+          related_booking_id?: string | null
+          related_order_id?: string | null
+          related_referral_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reward_transactions_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reward_transactions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reward_transactions_related_booking_id_fkey"
+            columns: ["related_booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reward_transactions_related_referral_id_fkey"
+            columns: ["related_referral_id"]
+            isOneToOne: false
+            referencedRelation: "referrals"
             referencedColumns: ["id"]
           },
         ]

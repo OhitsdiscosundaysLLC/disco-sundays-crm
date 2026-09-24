@@ -35,6 +35,64 @@ does not substitute for the other.
   once the Admin API app is created in the Shopify admin — this MCP session's
   connector does not itself hand over a server-usable access token).
 
+### Inspection findings (2026-09-24, read-only, Claude Code)
+
+Performed at the user's explicit request before any Shopify code was
+written. **Nothing exists yet**:
+- No Shopify SDK or GraphQL client in `apps/web/package.json`.
+- No webhook route, no sync code, no adapter module anywhere in `apps/web`.
+- The only Shopify-related things in the codebase are placeholder ID
+  columns already built for cross-referencing once sync exists:
+  `customers.shopify_customer_id`, `services.shopify_product_id`,
+  `payments.provider = 'shopify'` (check-constrained, D-011/D-014).
+- No `SHOPIFY_*` variables are set in `apps/web/.env.local`.
+- No Shopify webhooks are registered anywhere reachable from this project.
+
+**Recommended integration approach** — a Shopify **Custom App**, not a
+public OAuth app: this is a single-store internal integration (Disco
+Sundays' own CRM talking to Disco Sundays' own store), so a Custom App
+created directly in Shopify Admin → Settings → Apps and sales channels →
+Develop apps issues an Admin API access token directly. No `API_KEY`/
+`API_SECRET` OAuth pair is needed — that pattern is for public apps
+distributed to other merchants, which this isn't. Use the **GraphQL Admin
+API** (current, versioned quarterly) per the user's explicit instruction,
+not the legacy REST Admin API.
+
+**Environment variables needed** (names updated in both `.env.example`
+files to match this recommendation):
+- `SHOPIFY_STORE_DOMAIN` — the `*.myshopify.com` domain (not the storefront
+  domain `discosundays.com` — GraphQL Admin API calls target the
+  `.myshopify.com` hostname regardless of the storefront's custom domain).
+- `SHOPIFY_ADMIN_ACCESS_TOKEN` — the Custom App's Admin API access token
+  (starts `shpat_`), generated after the app is created and installed.
+- `SHOPIFY_API_VERSION` — pin explicitly (e.g. `2025-01`); GraphQL Admin
+  API versions roll quarterly and pinning avoids silent breakage.
+- `SHOPIFY_WEBHOOK_SECRET` — only needed once webhook subscriptions are
+  actually registered (a write/config action on the live store requiring
+  explicit approval first, same posture as Square webhook registration).
+
+**Minimum API scopes** (read-only — the CRM never writes back to Shopify,
+per the source-of-truth rules above): `read_customers`, `read_orders`,
+`read_products`. No `write_*` scopes needed for the sync described here.
+
+**Does the user need to create/install anything?** Yes — a Custom App
+must be created and installed in the Shopify Admin before any credential
+exists to configure. This is the one manual step; everything after it
+(adapter code, webhook route, sync logic) is build work Claude Code can do
+without further owner involvement.
+
+**Webhooks required once the app exists**: `orders/create`, `orders/updated`
+(order + payment-status sync), `customers/create`, `customers/update`
+(customer sync); `products/update` optional if keeping
+`services.shopify_product_id` cross-references current. Registered via
+the Custom App's webhook subscriptions UI or the `webhookSubscriptionCreate`
+GraphQL mutation — either way, a write action on the live store, done only
+with explicit approval, not automatically by Claude Code.
+
+**Where the credential goes**: same as every other integration in this
+project — Vercel server-side environment variables for production, and
+`apps/web/.env.local` (gitignored) for local dev. Never pasted into chat.
+
 ## Square
 
 - Square stays the primary booking/payment/calendar system during migration

@@ -207,19 +207,30 @@ mechanism required by spec §13/§14/§35.
   booking can optionally be attributed to a membership, making the live
   usage query possible.
 
-## Phase 7 — Referrals & Rewards
+## Phase 7 — Referrals & Rewards (applied — `0009_phase7_referrals_rewards.sql`, hardened `0010_phase7_harden_reward_trigger.sql`)
+- `customers.referral_code` — stable, shareable code per customer (unique
+  partial index, generated on demand from the customer profile page).
 - `referrals` — referrer_customer_id, referred_customer_id, code, source,
-  qualification_status, related_purchase_id nullable, created_at. A unique
-  partial index prevents a customer referring themselves
-  (`referrer_customer_id != referred_customer_id`, enforced as a check
-  constraint, not just app logic).
-- `reward_accounts` — one per customer, maintains a cached `balance` that is
-  recomputed from `reward_transactions` (source of truth), never edited
-  directly.
-- `reward_transactions` — customer_id, type, amount, reason, related_referral_id
-  /related_booking_id/related_order_id (nullable, one populated), created_at,
-  actor_id (staff or `null` for system). Append-only ledger per spec §25 —
-  this is explicitly *not* a single mutable points column.
+  qualification_status, related_payment_id nullable (FK to `payments`),
+  created_at. A `referrals_no_self_referral` check constraint prevents a
+  customer referring themselves; a unique index on `referred_customer_id`
+  means a customer can only be recorded as referred once. Application UI:
+  full create + qualification-status management.
+- `reward_accounts` — one per customer, `balance` maintained **only** by a
+  trigger (`apply_reward_transaction()`, security definer, direct RPC
+  access revoked) off `reward_transactions` inserts — never directly
+  writable by any app role. Recomputed from `reward_transactions` (source
+  of truth), matching spec §25 exactly.
+- `reward_transactions` — customer_id, type, amount, reason,
+  related_referral_id/related_booking_id/related_order_id (nullable, one
+  populated), created_at, actor_id (staff, self-attributed only — same
+  anti-spoofing pattern as D-016 — or `null` for system). Append-only
+  ledger — no update/delete policy for any app role. A partial unique
+  index on `(related_referral_id) where type = 'referral_reward'` makes
+  reward issuance idempotent — a referral can never be paid twice.
+  Application UI: "Issue reward" action on a qualified referral (staff
+  enters the amount — see D-018 on why no default is invented) plus a
+  ledger/balances view at `/rewards`.
 
 ## Phase 8 — Base44 migration
 - `base44_import_log` — source_record_type, source_id, mapped_table,
