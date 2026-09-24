@@ -3,6 +3,51 @@
 All notable changes to the Disco Sundays CRM project are recorded here,
 newest first.
 
+## Claude Code handoff continuation — Phase 6 (Memberships) — 2026-09-24
+
+- **Credential handling incident**: the user pasted real production
+  credentials directly into chat (Supabase `service_role` key, Square
+  production Application ID/Access Token/Application Secret/Location ID).
+  None were used, stored, written to any file, or echoed back — this
+  project's standing rule is that credentials are never entered into any
+  field by the assistant, even when explicitly handed over. The user was
+  told to treat them as exposed (chat is not a secure channel) and advised
+  to rotate both before relying on them, and given the exact secure
+  entry point (Vercel env vars / local `.env.local`) for when they're ready
+  to configure them properly. As of this entry, no production credentials
+  exist anywhere in this project's reachable environment — confirmed by
+  checking `apps/web/.env.local` directly (only the two public Supabase
+  values are present).
+- **Database**: applied `0008_phase6_memberships.sql` — `membership_plans`,
+  `memberships`, `membership_usage`, plus a nullable `bookings.membership_id`
+  so usage can be computed from real booking activity (D-017). Also fixed
+  an `audit_logs` gap of the same shape as D-012: no insert policy existed
+  for authenticated users, so sensitive-action logging (required by
+  `docs/SECURITY.md` §5, including membership changes) had no real write
+  path. Added one with actor-spoofing prevention — see D-016.
+- **Membership plans**: full CRUD application UI.
+- **Memberships**: full CRUD application UI — customer/plan assignment,
+  status (active/paused/cancelled/expired), renewal date, billing metadata.
+  Creation and status changes write a customer timeline activity. Usage is
+  shown as a live computation over bookings attributed to the membership
+  (via the new optional `membership_id` field added to the booking form),
+  never a hand-entered number.
+- **Verified**: build/typecheck/lint all pass. The browser session used for
+  live UI testing in prior phases had expired (long-running session) and
+  the assistant does not have and will not request the owner's password to
+  re-authenticate — so this phase was verified differently: by simulating
+  authenticated Postgres requests directly against the live database
+  (`set local role authenticated` + `request.jwt.claims`), confirming (a)
+  the owner role can create/read/delete membership plans and memberships
+  exactly as the RLS policies intend, (b) an unrecognized identity is
+  correctly denied, and (c) the new audit_logs anti-spoofing check
+  correctly allows self-attributed entries and rejects forged ones. No
+  data was left in production (test paths ran inside transactions that
+  were not committed; production counts confirmed at zero afterward).
+  Full click-through browser verification of this phase specifically is
+  still outstanding — flagged honestly rather than claimed.
+- Docs updated: CHANGELOG, DECISIONS (D-016, D-017), DATABASE, SECURITY.
+
 ## Claude Code handoff continuation — Phase 4 (Projects + Galleries) — 2026-09-23
 
 - **Database**: applied `0007_phase4_projects_galleries.sql` —

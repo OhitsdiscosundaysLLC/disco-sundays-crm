@@ -20,6 +20,7 @@ export type BookingDefaults = {
   start_time: string | null;
   end_time: string | null;
   staff_id: string | null;
+  membership_id: string | null;
   location: string | null;
   status: string;
   payment_status: string;
@@ -34,6 +35,7 @@ export function BookingForm({
   serviceOptions,
   staffOptions,
   statusOptions,
+  membershipOptions,
 }: {
   action: (state: FormState, formData: FormData) => Promise<FormState>;
   defaults: BookingDefaults;
@@ -42,6 +44,7 @@ export function BookingForm({
   serviceOptions: { value: string; label: string }[];
   staffOptions: { value: string; label: string }[];
   statusOptions: { value: string; label: string }[];
+  membershipOptions: { value: string; label: string }[];
 }) {
   const [state, formAction] = useActionState<FormState, FormData>(action, {
     error: null,
@@ -91,6 +94,12 @@ export function BookingForm({
             options={[{ value: "", label: "Unassigned" }, ...staffOptions]}
           />
         ) : null}
+        <SelectField
+          label="Membership (for usage tracking)"
+          name="membership_id"
+          defaultValue={defaults.membership_id ?? ""}
+          options={[{ value: "", label: "Not membership-covered" }, ...membershipOptions]}
+        />
       </div>
 
       <TextAreaField label="Notes" name="notes" defaultValue={defaults.notes} rows={3} />

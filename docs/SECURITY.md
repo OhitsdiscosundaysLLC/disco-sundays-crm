@@ -63,7 +63,10 @@ Sensitive actions (customer delete/merge, payment changes, reward issuance/
 adjustment, membership changes, gallery access changes, staff permission
 changes, integration changes) write to `audit_logs` with actor, action,
 entity, entity id, and metadata. Audit logs are insert-only from the app's
-perspective (no update/delete policy granted to any app role).
+perspective (no update/delete policy granted to any app role). The insert
+policy (added D-016) requires `actor_id` to match the inserting user's own
+`auth.uid()` (or be `null`) — a user can log their own actions but can
+never forge another user's actor_id. Reads remain owner/admin-only.
 
 ## 6. Media upload security (spec §48)
 

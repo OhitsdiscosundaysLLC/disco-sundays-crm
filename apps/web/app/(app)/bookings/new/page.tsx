@@ -14,7 +14,7 @@ export default async function NewBookingPage() {
   if (!allowed) redirect("/bookings");
 
   const supabase = await createClient();
-  const [{ data: customers }, { data: services }, { data: staff }, { data: statuses }] =
+  const [{ data: customers }, { data: services }, { data: staff }, { data: statuses }, { data: memberships }] =
     await Promise.all([
       supabase
         .from("customers")
@@ -30,6 +30,11 @@ export default async function NewBookingPage() {
         .order("name"),
       supabase.from("profiles").select("id, display_name, email").order("display_name"),
       supabase.from("booking_statuses").select("slug, label").order("sort_order"),
+      supabase
+        .from("memberships")
+        .select("id, customers(display_name, email, phone), membership_plans(name)")
+        .is("deleted_at", null)
+        .eq("status", "active"),
     ]);
 
   return (
@@ -42,6 +47,10 @@ export default async function NewBookingPage() {
         serviceOptions={(services ?? []).map((s) => ({ value: s.id, label: s.name }))}
         staffOptions={(staff ?? []).map((p) => ({ value: p.id, label: p.display_name || p.email || p.id }))}
         statusOptions={(statuses ?? []).map((s) => ({ value: s.slug, label: s.label }))}
+        membershipOptions={(memberships ?? []).map((m) => ({
+          value: m.id,
+          label: `${m.customers ? customerLabel(m.customers) : "—"} — ${m.membership_plans?.name || "plan"}`,
+        }))}
         defaults={{
           customer_id: null,
           service_id: null,
@@ -49,6 +58,7 @@ export default async function NewBookingPage() {
           start_time: null,
           end_time: null,
           staff_id: null,
+          membership_id: null,
           location: null,
           status: "pending",
           payment_status: "unpaid",

@@ -42,8 +42,15 @@ table reflects reality as of the Claude Code continuation.
 | 1 — Foundation (Next.js/auth/RBAC/layout) | Done, build-verified, live-verified with a real owner account |
 | 2 — CRM | Done: database + Customers/Leads application UI. Live-verified end-to-end in a real browser (create/edit/tag/note/convert all confirmed against production Supabase, test data cleaned up after) |
 | 3 — Services/Bookings/Payments | Schema + application UI done for Services (full CRUD) and Bookings (full CRUD, writes timeline activities). Payments is read-only by design (D-014) — no Square/Shopify credentials exist yet, so there's nothing to sync in; webhook handlers are the remaining work once credentials arrive |
-| 4 — Projects + Galleries | Schema + full management UI done (create/publish/upload/cover/delete). Public `/gallery/[slug]` + `/embed/gallery/[id]` routes are built but need `SUPABASE_SERVICE_ROLE_KEY` (not set yet) to actually serve content — currently show an honest "not configured" message. Live-verified: customer/gallery/project creation, settings, publish/unpublish all confirmed against production Supabase. File upload and the public password gate itself weren't exercised (no file-picker in this sandbox's browser automation; service key not set) |
-| 5–11 | Not started |
+| 4 — Projects + Galleries | Schema + full management UI done (create/publish/upload/cover/delete). Public `/gallery/[slug]` + `/embed/gallery/[id]` routes are built but need `SUPABASE_SERVICE_ROLE_KEY` (still not set anywhere — see below) to actually serve content — currently show an honest "not configured" message. Live-verified: customer/gallery/project creation, settings, publish/unpublish all confirmed against production Supabase. File upload and the public password gate itself weren't exercised (no file-picker in this sandbox's browser automation; service key not set) |
+| 6 — Memberships | Schema + full CRUD application UI done (plans, memberships, live-computed usage from bookings). RLS verified directly against the database (owner-role allow, unrecognized-identity deny, audit-log actor-spoofing deny) since the browser login session had expired by this point and no password was available to re-authenticate — full click-through browser verification is still outstanding for this specific phase |
+| 5, 7–11 | Not started (5 = Shopify, 7 = Referrals/Rewards, 8 = Base44, 9 = Automation, 10 = Reporting, 11 = Production hardening) |
+
+**Credential incident (2026-09-24)**: the user pasted real production
+Supabase and Square credentials directly into chat. None were used,
+stored, or written anywhere — see `docs/CHANGELOG.md`'s Phase 6 entry and
+`docs/DECISIONS.md` for the full account. Still nothing configured; both
+remain outstanding (see below).
 
 Resolved: repo is pushed to GitHub (`disco-sundays-crm`, verified via
 `git fetch`) and an owner account exists and was verified working live
@@ -83,10 +90,10 @@ See D-015.
 
 ## E. Exact incomplete work
 
-Customers/Leads, Services/Bookings/Payments, and Projects/Galleries
-application UI are now done (see section C). Remaining, in spec order:
-Square/Shopify webhook sync (schema/RLS ready, blocked on credentials —
-D-014), Shopify integration, Memberships, Referrals/Rewards, Base44
+Customers/Leads, Services/Bookings/Payments, Projects/Galleries, and
+Memberships application UI are now done (see section C). Remaining, in
+spec order: Square/Shopify webhook sync (schema/RLS ready, blocked on
+credentials — D-014), Shopify integration, Referrals/Rewards, Base44
 migration, Automation engine, Reporting, Production hardening. None of
 these have any code written yet.
 
@@ -380,22 +387,28 @@ connected system (`docs/SECURITY.md` §10).
 
 ## AH. Exact next implementation phase
 
-Phases 0–4 are done (section C). One credential would make Phase 4 fully
-live end-to-end: `SUPABASE_SERVICE_ROLE_KEY` (see section C's note and
-D-015) — not blocking further work, just means the public gallery routes
-stay honestly inert until it's set.
+Phases 0–4 and 6 are done (section C; Phase 5/Shopify is intentionally
+skipped for now — no Shopify credentials exist). No external credentials
+are configured anywhere in this project's reachable environment as of this
+writing (`SUPABASE_SERVICE_ROLE_KEY`, all four Square production
+variables) — see the credential-incident note above.
 
-Once picked back up, per `docs/PROJECT_SPEC.md` §7: **Phase 5 — Shopify
-integration** (webhook-first sync of customers/orders per
-`docs/INTEGRATIONS.md`, needs `SHOPIFY_API_KEY`/`SHOPIFY_ACCESS_TOKEN`/
-`SHOPIFY_WEBHOOK_SECRET` — not available yet either), or **Phase 6 —
-Memberships** if Shopify credentials are still unavailable when this
-resumes (membership_plans/memberships/membership_usage per
-`docs/DATABASE.md`, no external credentials needed, pure CRM-native work
-like Phase 4 was). Square webhook handlers (Phase 3, D-014) remain parked
-on credentials too — pick up whichever of Shopify/Square/Base44
-credentials actually arrive first, or continue with credential-free phases
-(Memberships, Referrals/Rewards, Automation, Reporting) in the meantime.
-Continue phase by phase per RULE 7, testing (live browser verification
-against production Supabase, not just build-passing) and committing +
-pushing at each boundary.
+Next: **Phase 7 — Referrals & Rewards**, per `docs/DATABASE.md`'s Phase 7
+section and `docs/DECISIONS.md` D-008/D-009: `referrals` (referrer/referred
+customer, code, source, qualification_status, anti-self-referral check
+constraint) and `reward_accounts`/`reward_transactions` (append-only
+ledger — never a mutable balance column, this is decided not optional).
+Reward amounts/qualification rules are not defined by the business yet —
+make them configurable (e.g. a `reward_rules`-style config, or fields on
+the referral/reward tables), do not invent permanent values. No external
+credentials needed — pure CRM-native work.
+
+After that, per the user's stated priority order: Payments enrichment,
+Tasks, Reports, Global Search, Automation engine — then Square/Shopify/
+Base44/n8n integration work once/if credentials arrive. Continue phase by
+phase per RULE 7, testing at each boundary. Live browser verification
+requires a fresh sign-in from the owner (the session used in Phases 1–4
+expired partway through Phase 6) — if browser testing isn't possible,
+fall back to the direct-RLS-simulation method used for Phase 6 (documented
+in that phase's CHANGELOG entry) rather than skipping verification
+entirely.

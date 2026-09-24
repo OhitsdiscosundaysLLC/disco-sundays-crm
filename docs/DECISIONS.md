@@ -204,6 +204,44 @@ either bucket — public-bucket downloads work through Supabase's normal
 public URL (bypasses RLS by design), and private-bucket downloads only
 ever happen through server-generated signed URLs.
 
+## D-016 — `audit_logs` insert policy: authenticated users log their own actions
+
+**Context**: `0001_foundation.sql` created `audit_logs` with a select-only
+policy, intending writes to come from "server-side code using the service
+role." Building Memberships (Phase 6, which `docs/SECURITY.md` §5 lists as
+a sensitive action requiring an audit trail) surfaced the same class of gap
+as D-012 (`activities`): there was no way to actually write an audit log
+entry without either leaving the requirement unmet or using the service
+role for routine user-facing writes — which this project's own standing
+instruction says not to do ("the service-role credential must NOT become a
+shortcut around the application's authorization model").
+**Decision**: Added an insert policy — any authenticated user may insert an
+audit_logs row, but only with `actor_id` equal to their own `auth.uid()`
+(or `null`, for a future system-triggered entry). This prevents staff from
+forging another user's actor_id while still letting the audit trail work
+for routine actions. Reads remain owner/admin-only, unchanged.
+**Verified**: tested directly against the live database by simulating an
+authenticated request (`set local role authenticated` +
+`request.jwt.claims`) — a legitimate self-attributed audit log insert
+succeeds, and an attempt to insert with a different user's `actor_id` is
+rejected by RLS.
+
+## D-017 — Membership usage is a live query over `bookings`, not hand-entered
+
+**Context**: `docs/DATABASE.md`'s Phase 6 section states usage must be
+"computed from real bookings/activity, never hand-entered." No automation
+engine exists yet (Phase 9) to populate `membership_usage` from booking
+completions.
+**Decision**: Added a nullable `bookings.membership_id` column so staff can
+optionally attribute a booking to a customer's membership at booking time.
+The membership detail page computes and displays usage live by querying
+bookings where `membership_id` matches — no manual "log usage" UI was
+built, and `membership_usage` has no insert policy for authenticated users
+(same posture as `payments`/`refunds`). The `membership_usage` ledger table
+stays in schema, ready for Phase 9 automation to populate once booking
+completions can trigger it automatically; until then the live query is the
+honest, real (not fabricated) usage signal.
+
 ---
 
 ## Open questions for the user (not decided unilaterally)

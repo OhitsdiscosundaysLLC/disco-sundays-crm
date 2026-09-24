@@ -188,15 +188,24 @@ in Phase 3 (Square is the first webhook integration) and reused by Shopify.
 Unique constraint on `(provider, provider_event_id)` is the idempotency
 mechanism required by spec §13/§14/§35.
 
-## Phase 6 — Memberships
+## Phase 6 — Memberships (applied — `0008_phase6_memberships.sql`)
 - `membership_plans` — name, price, billing_interval, benefits jsonb,
-  active.
+  active. Application UI is full CRUD.
 - `memberships` — customer_id, plan_id, status (active/paused/cancelled/
   expired), start_date, renewal_date, payment_provider, external_payment_id,
-  notes.
+  notes. `payment_provider`/`external_payment_id` are descriptive metadata
+  about how the membership is billed, not a `payments` ledger row — see
+  D-017. Application UI is full CRUD; status changes and creation write a
+  customer timeline activity.
 - `membership_usage` — membership_id, booking_id nullable, usage_type,
   amount (hours/sessions), recorded_at — usage is computed from real
-  bookings/activity, not hand-entered, per spec §23.
+  bookings/activity, not hand-entered, per spec §23. No insert policy for
+  authenticated users yet (populated by future automation); the
+  application instead computes usage live from `bookings.membership_id`.
+  See D-017.
+- `bookings.membership_id` — nullable FK added in this migration so a
+  booking can optionally be attributed to a membership, making the live
+  usage query possible.
 
 ## Phase 7 — Referrals & Rewards
 - `referrals` — referrer_customer_id, referred_customer_id, code, source,

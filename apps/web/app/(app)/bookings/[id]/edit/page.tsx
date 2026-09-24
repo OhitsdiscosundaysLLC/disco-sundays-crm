@@ -20,11 +20,11 @@ export default async function EditBookingPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: booking }, { data: customers }, { data: services }, { data: staff }, { data: statuses }] =
+  const [{ data: booking }, { data: customers }, { data: services }, { data: staff }, { data: statuses }, { data: memberships }] =
     await Promise.all([
       supabase
         .from("bookings")
-        .select("id, customer_id, service_id, date, start_time, end_time, staff_id, location, status, payment_status, notes")
+        .select("id, customer_id, service_id, date, start_time, end_time, staff_id, membership_id, location, status, payment_status, notes")
         .eq("id", id)
         .is("deleted_at", null)
         .single(),
@@ -37,6 +37,11 @@ export default async function EditBookingPage({
       supabase.from("services").select("id, name").is("deleted_at", null).order("name"),
       supabase.from("profiles").select("id, display_name, email").order("display_name"),
       supabase.from("booking_statuses").select("slug, label").order("sort_order"),
+      supabase
+        .from("memberships")
+        .select("id, customers(display_name, email, phone), membership_plans(name)")
+        .is("deleted_at", null)
+        .eq("status", "active"),
     ]);
 
   if (!booking) notFound();
@@ -51,6 +56,10 @@ export default async function EditBookingPage({
         serviceOptions={(services ?? []).map((s) => ({ value: s.id, label: s.name }))}
         staffOptions={(staff ?? []).map((p) => ({ value: p.id, label: p.display_name || p.email || p.id }))}
         statusOptions={(statuses ?? []).map((s) => ({ value: s.slug, label: s.label }))}
+        membershipOptions={(memberships ?? []).map((m) => ({
+          value: m.id,
+          label: `${m.customers ? customerLabel(m.customers) : "—"} — ${m.membership_plans?.name || "plan"}`,
+        }))}
         defaults={booking}
       />
     </div>

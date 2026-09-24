@@ -118,6 +118,7 @@ export type Database = {
           external_square_booking_id: string | null
           id: string
           location: string | null
+          membership_id: string | null
           notes: string | null
           payment_status: string
           service_id: string
@@ -135,6 +136,7 @@ export type Database = {
           external_square_booking_id?: string | null
           id?: string
           location?: string | null
+          membership_id?: string | null
           notes?: string | null
           payment_status?: string
           service_id: string
@@ -152,6 +154,7 @@ export type Database = {
           external_square_booking_id?: string | null
           id?: string
           location?: string | null
+          membership_id?: string | null
           notes?: string | null
           payment_status?: string
           service_id?: string
@@ -166,6 +169,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_membership_id_fkey"
+            columns: ["membership_id"]
+            isOneToOne: false
+            referencedRelation: "memberships"
             referencedColumns: ["id"]
           },
           {
@@ -546,6 +556,147 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lead_statuses"
             referencedColumns: ["slug"]
+          },
+        ]
+      }
+      membership_plans: {
+        Row: {
+          active: boolean
+          benefits: Json
+          billing_interval: string
+          created_at: string
+          currency: string
+          deleted_at: string | null
+          id: string
+          name: string
+          price: number | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          benefits?: Json
+          billing_interval?: string
+          created_at?: string
+          currency?: string
+          deleted_at?: string | null
+          id?: string
+          name: string
+          price?: number | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          benefits?: Json
+          billing_interval?: string
+          created_at?: string
+          currency?: string
+          deleted_at?: string | null
+          id?: string
+          name?: string
+          price?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      membership_usage: {
+        Row: {
+          amount: number
+          booking_id: string | null
+          id: string
+          membership_id: string
+          recorded_at: string
+          usage_type: string
+        }
+        Insert: {
+          amount: number
+          booking_id?: string | null
+          id?: string
+          membership_id: string
+          recorded_at?: string
+          usage_type: string
+        }
+        Update: {
+          amount?: number
+          booking_id?: string | null
+          id?: string
+          membership_id?: string
+          recorded_at?: string
+          usage_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "membership_usage_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "membership_usage_membership_id_fkey"
+            columns: ["membership_id"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      memberships: {
+        Row: {
+          created_at: string
+          customer_id: string
+          deleted_at: string | null
+          external_payment_id: string | null
+          id: string
+          notes: string | null
+          payment_provider: string | null
+          plan_id: string
+          renewal_date: string | null
+          start_date: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          deleted_at?: string | null
+          external_payment_id?: string | null
+          id?: string
+          notes?: string | null
+          payment_provider?: string | null
+          plan_id: string
+          renewal_date?: string | null
+          start_date?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          deleted_at?: string | null
+          external_payment_id?: string | null
+          id?: string
+          notes?: string | null
+          payment_provider?: string | null
+          plan_id?: string
+          renewal_date?: string | null
+          start_date?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "memberships_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "memberships_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "membership_plans"
+            referencedColumns: ["id"]
           },
         ]
       }
