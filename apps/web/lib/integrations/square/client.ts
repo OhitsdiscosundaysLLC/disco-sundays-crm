@@ -19,12 +19,14 @@ export function getSquareCredentials(): SquareCredentials | null {
   return { accessToken, locationId: process.env.SQUARE_LOCATION_ID ?? null };
 }
 
-async function squareFetch(path: string, accessToken: string) {
+export async function squareFetch(path: string, accessToken: string, init?: RequestInit) {
   return fetch(`${SQUARE_API_BASE}${path}`, {
+    ...init,
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Square-Version": SQUARE_VERSION,
       "Content-Type": "application/json",
+      ...init?.headers,
     },
   });
 }

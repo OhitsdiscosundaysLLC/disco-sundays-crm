@@ -28,7 +28,15 @@ export default async function AppLayout({
     <div className="min-h-screen md:flex">
       <Nav visibleResources={visibleResources} displayName={displayName} />
       <div className="flex min-h-screen flex-1 flex-col">
-        <header className="hidden items-center justify-end border-b border-neutral-200 px-6 py-3 md:flex">
+        <header className="hidden items-center justify-between border-b border-neutral-200 px-6 py-3 md:flex">
+          <form action="/search" method="get" className="w-full max-w-xs">
+            <input
+              type="text"
+              name="q"
+              placeholder="Search…"
+              className="w-full rounded-md border border-neutral-300 px-3 py-1.5 text-sm focus:border-neutral-500 focus:outline-none"
+            />
+          </form>
           <SignOutButton />
         </header>
         <main className="flex-1 px-4 py-6 md:px-8 md:py-8">{children}</main>

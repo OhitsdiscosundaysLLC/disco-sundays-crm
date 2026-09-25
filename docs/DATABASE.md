@@ -237,21 +237,36 @@ mechanism required by spec §13/§14/§35.
   mapped_id, imported_at, raw_payload jsonb — audit trail of the one-time/
   ongoing migration, not a permanent app table.
 
-## Phase 9 — Automation
-- `automation_rules` — trigger_event, condition jsonb, action_type,
-  action_config jsonb, active.
-- (`activities` already exists from Phase 0 and is the trigger source.)
+## Phase 9 — Automation (applied — `0014_phase_automation.sql`)
+- `automation_rules` — name, trigger_event (matches `activities.type`),
+  action_type (`create_task` only in v1, check-constrained), action_config
+  jsonb, active, created_by. `activities` (Phase 0) is the trigger source —
+  a `SECURITY DEFINER` trigger (`run_automation_rules()`, RPC execute
+  revoked from anon/authenticated, same posture as
+  `apply_reward_transaction()`) fires on every `activities` insert and
+  creates a task per any active matching rule. See D-026.
 
 ## Cross-cutting
-- `tasks` (Phase 2 or when first needed) — title, description, assigned_to,
-  customer_id, project_id, due_date, priority, status, completed_at.
+- `tasks` (applied — `0013_phase_tasks.sql`) — `task_statuses` (todo/
+  in_progress/done/cancelled, same configurable-status pattern as
+  `booking_statuses`), `tasks`: title, description, status, priority
+  (low/normal/high/urgent), assignee_id (→ profiles), due_date,
+  related_type/related_id (polymorphic — customer/lead/project/booking,
+  no FK, same pattern as `payments.related_id`), created_by, completed_at.
+  RLS is resource-level only via `has_permission(role, 'tasks', action)` —
+  see D-024.
 - `projects` — moved up into the Phase 4 section above (built alongside
   galleries, which reference it).
 - `integrations` (applied — `0011_integrations_status.sql`) — provider,
   status (connected/not_connected/error), last_checked_at, connected_at,
   metadata jsonb (never raw secrets — those live only in env vars, see
-  `SECURITY.md`). Backs the Settings → Integrations "Test connection"
-  action for Square (live-verified) and Shopify (D-020/D-021).
+  `SECURITY.md`). Backs the Settings → Integrations "Test connection" and
+  "Sync now" actions for Square (live-verified, D-020/D-023) and Shopify
+  connection check (D-020/D-021).
+- `refunds.provider_refund_id` gained a partial unique index in
+  `0012_phase_square_sync_idempotency.sql` — missing from the original
+  Phase 3 migration, needed so the Square sync (D-023) can re-run without
+  creating duplicate refund rows.
 
 ## Customer matching / duplicate prevention (spec §33)
 

@@ -45,8 +45,13 @@ table reflects reality as of the Claude Code continuation.
 | 4 — Projects + Galleries | Schema + full management UI done (create/publish/upload/cover/delete). Public `/gallery/[slug]` + `/embed/gallery/[id]` routes are built but need `SUPABASE_SERVICE_ROLE_KEY` (still not set anywhere — see below) to actually serve content — currently show an honest "not configured" message. Live-verified: customer/gallery/project creation, settings, publish/unpublish all confirmed against production Supabase. File upload and the public password gate itself weren't exercised (no file-picker in this sandbox's browser automation; service key not set) |
 | 6 — Memberships | Done: schema + full CRUD UI (plans, memberships, live-computed usage from bookings). RLS verified via direct database simulation (see Phase 7 row — same method) |
 | 7 — Referrals & Rewards | Done: schema + full UI (referral codes, qualification workflow, append-only reward ledger, idempotent "issue reward" action). RLS verified via direct database simulation — real bug found and fixed same-pass (reward-balance trigger function was directly RPC-callable, revoked). `SUPABASE_SERVICE_ROLE_KEY` configured and verified live via the public gallery routes (first real end-to-end proof they work) |
-| Integrations status | Done: `integrations` table + Settings "Test connection" UI (spec §34). Square connectivity verified live with real production credentials (found a real, non-secret `SQUARE_LOCATION_ID` typo along the way). Shopify client built for the Dev Dashboard client-credentials auth model (corrected after verifying against Shopify's current docs) — code verified for graceful "not configured" behavior; live auth not yet provable, no Shopify credentials exist anywhere reachable by this project |
-| 5 (Shopify), 8–11 | Architecture/inspection done for Shopify (see Integrations status row); full sync not started. 8 = Base44, 9 = Automation, 10 = Reporting, 11 = Production hardening — not started |
+| Integrations status | Done: `integrations` table + Settings "Test connection"/"Sync now" UI (spec §34). Square connectivity **and full read-sync** (customers/payments/refunds/bookings) verified live against real production data — 1,000+ real customers synced (D-020, D-023). Shopify client built for the Dev Dashboard client-credentials auth model — connectivity check only, code verified for graceful "not configured" behavior; live auth not yet provable, credentials pasted into chat were never used (D-021) |
+| Vercel deploy | Done: production live at `https://disco-sundays-crm.vercel.app` (D-022). Two real bugs found and fixed: Root Directory wasn't set (every request 404'd), and the public Supabase env vars were present but middleware crashed on them |
+| Tasks | Done: schema + full CRUD UI, RLS-verified (D-024) |
+| Reports | Done: `/reports`, real live queries only, no fabricated stats (D-025) |
+| Global Search | Done: `/search` + header search box, covers customers/leads/projects/galleries/referrals (D-025) |
+| Automation | Done: minimal engine (D-026) — `automation_rules` + a trigger on `activities` inserts, one action type (`create_task`). RLS-verified end to end (rule fires, task created with correct fields) |
+| 5 (Shopify sync), 8 | Shopify connectivity check only, full sync not started (needs credentials — see below). 8 = Base44 — not started, no credentials |
 
 **Credential incidents (2026-09-24, twice)**: the user pasted real
 production Supabase, Square, and (separately, later) Shopify credentials
@@ -61,14 +66,15 @@ Shopify credentials remain outstanding — the user should regenerate the
 pasted Client Secret (treat it as exposed) and enter fresh values directly
 into `apps/web/.env.local`. Base44 credentials also remain outstanding.
 
-**Vercel (2026-09-24)**: confirmed genuinely blocked, not just
-unconfigured — the Vercel MCP connector reports zero teams and zero
-projects visible to this session, account-wide. Cannot create a project
-without a team ID. See the open questions in `docs/DECISIONS.md` for the
-exact action needed. This blocks resolving the production URL, which in
-turn blocks updating the Shopify Dev Dashboard app's App URL (currently
-the `https://example.com` placeholder) — the user explicitly asked not to
-release a new Shopify app version until that's resolved and approved.
+**Vercel (resolved 2026-09-25)**: the user created the project and
+connected the GitHub repo; Claude Code found and fixed two real
+deployment bugs (Root Directory unset; two `NEXT_PUBLIC_*` env vars
+present but crashing middleware) and confirmed production live at
+`https://disco-sundays-crm.vercel.app` — see D-022. The Shopify Dev
+Dashboard app's App URL still needs updating from its `https://example.com`
+placeholder to this real URL, and per the user's explicit instruction that
+change (and any new app version release) still needs their approval
+before Claude Code touches it.
 
 Resolved: repo is pushed to GitHub (`disco-sundays-crm`, verified via
 `git fetch`) and an owner account exists and was verified working live
@@ -407,39 +413,44 @@ connected system (`docs/SECURITY.md` §10).
 
 ## AH. Exact next implementation phase
 
-Phases 0–4, 6, 7, and Integrations status are done (section C).
-`SUPABASE_SERVICE_ROLE_KEY` and Square credentials are configured and
-Square connectivity is verified live (`lib/integrations/square/client.ts`,
-Settings → Integrations → Test connection). Shopify's client is built
-(`lib/integrations/shopify/client.ts`) but not yet live-tested — no
-credentials exist for it yet.
+Phases 0–4, 6, 7, Integrations status, Vercel deploy, Square sync, Tasks,
+Reports, Global Search, and Automation are all done (section C, D-020
+through D-026). Production is live at
+`https://disco-sundays-crm.vercel.app`. Every item in the user's stated
+priority order (Square → Tasks/Reports/Search/Automation) is complete.
 
-Genuinely blocked on the user: **Vercel** (zero teams/projects visible to
-this session — see the credential/Vercel notes above) and **Shopify
-credentials** (Client ID/Secret pasted into chat, never used — need fresh
-values entered directly into `apps/web/.env.local`). Neither blocks
-everything else.
+Genuinely blocked on the user: **Shopify credentials** (Client ID/Secret
+pasted into chat twice, never used — regenerate the secret and enter
+fresh values directly into `apps/web/.env.local` / Vercel env vars) and
+**`SQUARE_LOCATION_ID`** — this now blocks a real feature, not just a
+connectivity check: it still has the typo (missing leading `L`,
+`BRQ3J5MYKNYX` instead of `LBRQ3J5MYKNYX`) and Square's own API rejects
+the payments/refunds/bookings sync because of it (D-023). Customer sync
+is unaffected and already succeeded (1,375 real customers). Fix is a
+one-character edit to `apps/web/.env.local` (and Vercel's env vars for
+production) only the user should make, then click "Sync now" again — no
+code changes needed.
 
 Next, in order —
-1. **Square sync adapter**: customer/booking/payment read sync respecting
-   D-011 (Square owns bookings/payments/services where Square-managed) and
-   D-005 (`webhook_events` idempotency table, already built in Phase 3).
-   Webhook route with signature verification can be written and unit-
-   tested, but **not registered** with Square — that's a write/config
-   change to the live account requiring explicit approval.
-2. Per the user's stated priority order: Tasks, Reports, Global Search,
-   Automation engine.
-3. Once Vercel is resolved: deploy, get the real production URL, update
-   the Shopify Dev Dashboard app's App URL (currently the `example.com`
-   placeholder) — only with the user's explicit approval, and only that
-   field, not a new app version otherwise.
-4. Once Shopify credentials are configured: verify connectivity live the
-   same way Square was, then build the Shopify sync adapter.
-5. Base44/n8n once credentials exist for those.
+1. Once Shopify credentials are configured: verify connectivity live the
+   same way Square was, then build the Shopify sync adapter (customers/
+   orders — see `docs/INTEGRATIONS.md`). Update the Shopify Dev Dashboard
+   app's App URL from its `example.com` placeholder to the real
+   production URL — **only with the user's explicit approval**, and only
+   that field, not a new app version otherwise.
+2. Base44 migration, n8n workflow audit — once credentials/access exist
+   for those.
+3. Square webhook registration — architecture (`webhook_events`,
+   signature verification) can be written and unit-tested now, but not
+   registered with the live Square account without explicit approval.
+4. Security hardening pass + end-to-end workflow test per the "Final
+   Definition of Done" criteria, once the above are in.
 
 Continue phase by phase per RULE 7, testing at each boundary. Live browser
 verification requires a signed-in session — it's been intermittently
-available this session (sometimes still valid, sometimes not); when
-unavailable, fall back to the direct-RLS-simulation method used for
-Phases 6 and 7 (documented in their CHANGELOG entries) rather than
-skipping verification entirely.
+available across this project (sometimes still valid, sometimes not);
+when unavailable, fall back to the direct-RLS-simulation method used for
+Phases 6, 7, and Tasks (documented in their CHANGELOG entries), or — for
+integration code that needs to call a real external API — a one-off
+script run via `node --env-file=.env.local`/`npx tsx` against the actual
+function (see D-023), deleted after use, never committed.

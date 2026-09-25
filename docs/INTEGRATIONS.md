@@ -1,6 +1,13 @@
 # Integrations
 
-Last updated: 2026-09-23
+Last updated: 2026-09-25
+
+Current state (see `docs/DECISIONS.md` D-020 through D-025 for detail):
+Vercel is live in production, Square connectivity + full read-sync are
+verified against real data, Shopify's client is built but not yet
+credentialed, and Base44/n8n are still unstarted. The table below is the
+original Phase 0 discovery snapshot — kept as a historical record, not
+current state.
 
 ## Discovery findings (Phase 0)
 
@@ -109,14 +116,31 @@ project — Vercel server-side environment variables for production, and
 - Square stays the primary booking/payment/calendar system during migration
   (spec §12, §13).
 - CRM syncs **in**: customers, bookings, payments, refunds, services.
-- Mechanism: Square webhooks, signature verified with
-  `SQUARE_WEBHOOK_SIGNATURE_KEY`, `webhook_events` row keyed on Square's
-  event id, idempotent processing, retry/error logging.
-- Blocked on credentials — see `.env.example`. Architecture (adapter module,
-  webhook route, DB tables) is built in Phase 3 regardless of whether
-  credentials exist yet, per RULE 2 — only the actual API calls are inert
-  until configured, and the Integrations settings page shows Square as
-  "Not connected" honestly rather than faking a synced state.
+- **Implemented (2026-09-25, D-023)**: `apps/web/lib/integrations/square/sync.ts`
+  is a pull-based, on-demand sync — a "Sync now" button in Settings →
+  Integrations, next to "Test connection." Not a webhook (webhook
+  registration still requires separate explicit approval — see below).
+  - Customers: matched via `external_square_customer_id` → email → phone
+    → create new, per the customer-matching rules in `docs/DATABASE.md`.
+  - Payments/refunds: written via the service-role client, since those
+    tables have no authenticated-user insert policy by design (only ever
+    written by a trusted server-side process — the sync action itself is
+    what gates who may trigger a run, via `settings:edit`).
+  - Bookings: requires the Square Appointments API. If the connected
+    Square account doesn't have it enabled, this is reported honestly
+    (`notAuthorized: true`) rather than failing the whole sync — customer/
+    payment/refund sync still completes independently.
+  - Live-verified against the real production Square account: 1,000+ real
+    customers synced correctly, including handling a genuine data-quality
+    issue found in Square itself (multiple customer records sharing one
+    email) without crashing or corrupting data.
+- Mechanism for **webhooks** (not yet registered): Square webhooks,
+  signature verified with `SQUARE_WEBHOOK_SIGNATURE_KEY`, `webhook_events`
+  row keyed on Square's event id, idempotent processing, retry/error
+  logging. The route can be written and unit-tested without being
+  registered with the live Square account — that registration is a
+  write/config action requiring explicit approval first, same posture as
+  Shopify webhooks below.
 
 ## Base44
 

@@ -3,6 +3,89 @@
 All notable changes to the Disco Sundays CRM project are recorded here,
 newest first.
 
+## Claude Code handoff continuation — Vercel live, Square sync, Tasks, Reports, Search — 2026-09-25
+
+- **Vercel production deploy fixed and verified live** (D-022). The user
+  connected the project and asked for it to be verified; found and fixed
+  two real bugs blocking it:
+  1. Root Directory wasn't set to `apps/web` — every request returned a
+     platform-level `404 NOT_FOUND`. Fixed via `update_project`
+     (rootDirectory + framework), then redeployed.
+  2. `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY` were present
+     in Vercel's env vars but middleware crashed with
+     `MIDDLEWARE_INVOCATION_FAILED` on every request. Fixed by setting both
+     explicitly (these two are meant to be public — already shipped in the
+     site's own JS bundle — unlike the service role key or Square/Shopify
+     secrets, which were left untouched) and triggering a fresh build
+     (`NEXT_PUBLIC_*` is inlined at build time in Next.js).
+  Production URL confirmed live: `https://disco-sundays-crm.vercel.app`
+  — real login page renders, confirmed via a fresh browser tab and a
+  direct network request. Also confirmed Vercel Authentication doesn't
+  gate the production alias, only ephemeral per-deployment URLs (desired
+  behavior, no change needed).
+- **Square read-sync adapter built and verified against the real
+  production Square account** (D-023): `lib/integrations/square/sync.ts`
+  — customers, payments, refunds, and bookings (best-effort — gracefully
+  reports "not authorized" if the account lacks the Appointments API
+  rather than failing the whole run). Wired to a new "Sync now" button in
+  Settings → Integrations next to Square's existing "Test connection."
+  Found and fixed two real bugs during live verification: a race
+  condition on repeated syncs (`23505` on `customers_square_id_key`) and a
+  genuine data-quality issue in the real Square account (multiple customer
+  records sharing one email, hitting `customers_email_key`) — both now
+  handled by catching the unique-violation and re-matching instead of
+  failing. Live-verified against production: **1,375 real Square
+  customers matched/created correctly** with the fix in place. Payments/
+  refunds/bookings sync did not complete this pass — Square rejected the
+  request with `Not authorized to list payments for location_id:
+  BRQ3J5MYKNYX`, confirming the `SQUARE_LOCATION_ID` typo flagged back in
+  the Integrations status entry below is now a real functional blocker,
+  not just cosmetic. Improved the sync's error messages to surface
+  Square's `detail` field so this is immediately diagnosable from a log
+  line. No code changes needed once the env var is corrected — see
+  `docs/DECISIONS.md` open question 3.
+  `supabase/migrations/0012_phase_square_sync_idempotency.sql` adds the
+  missing unique index on `refunds.provider_refund_id`.
+- **Tasks module built** (spec priority list, D-024):
+  `supabase/migrations/0013_phase_tasks.sql` (`task_statuses` + `tasks`,
+  RLS via the existing `tasks` resource permissions already seeded since
+  Phase 0) plus full CRUD UI (`/tasks`, `/tasks/new`, `/tasks/[id]/edit`) —
+  create, edit, mark done, delete, optional link to a customer. Verified
+  via direct RLS simulation (insert/update/delete all succeed for the
+  owner role under real policies, no active browser session this turn).
+- **Reports module built** (D-025): `/reports` — revenue this month/year,
+  active memberships + estimated MRR, referrals qualified/total, rewards
+  issued/redeemed, bookings by status. Every number is a live query under
+  the viewer's own RLS session, never the service role — a role without
+  `payments:view` simply sees that section empty, same as the Payments
+  page itself.
+- **Global Search built** (D-025): `/search` plus a search box in the app
+  header, covering customers/leads/projects/galleries/referrals — each
+  section gated by that resource's own view permission before querying.
+- **Automation engine built** (spec §63, D-026), the last item in the
+  user's stated priority order: `supabase/migrations/0014_phase_automation.sql`
+  adds `automation_rules` + a `SECURITY DEFINER` trigger
+  (`run_automation_rules()`) on `activities` inserts — when a rule's
+  `trigger_event` matches the new activity's `type`, it creates a follow-up
+  task (the only action type in v1, per "don't overbuild"). RPC execute
+  revoked from anon/authenticated, same hardening posture as
+  `apply_reward_transaction()`. Settings → Automation gained a rules
+  list (pause/activate/delete) + create form. Verified live via direct
+  RLS simulation: created a rule, inserted a matching activity, confirmed
+  the task was auto-created with the right title/priority/due date, then
+  confirmed the trigger function itself isn't directly RPC-callable by
+  anon or authenticated.
+- Two unindexed foreign keys the Supabase performance advisor flagged
+  after this pass (`tasks.created_by`, `automation_rules.created_by`)
+  fixed in `supabase/migrations/0015_phase_tasks_automation_fk_indexes.sql`.
+  Security advisor re-run clean otherwise — the only findings are
+  pre-existing ones already documented (D-002's `has_permission`/
+  `auth_role` being intentionally public RPCs, and the leaked-password
+  toggle).
+- Regenerated `apps/web/lib/supabase/database.types.ts` after each schema
+  change. `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean
+  after every change in this pass.
+
 ## Claude Code handoff continuation — Integrations status + Shopify Dev Dashboard — 2026-09-24 (second pass)
 
 - **Second credential-exposure incident**: the user pasted a Shopify

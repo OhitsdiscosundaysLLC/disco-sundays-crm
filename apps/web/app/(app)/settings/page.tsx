@@ -3,11 +3,17 @@ import { hasPermission } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/format";
 import { SubmitButton } from "@/components/submit-button";
-import { testSquareConnection, testShopifyConnection } from "./integrations-actions";
+import { testSquareConnection, testShopifyConnection, syncSquareData } from "./integrations-actions";
+import { toggleAutomationRule, deleteAutomationRule } from "./automation-actions";
+import { AutomationRuleForm } from "./automation-rule-form";
 
 const TEST_ACTIONS: Record<string, (() => Promise<void>) | undefined> = {
   square: testSquareConnection,
   shopify: testShopifyConnection,
+};
+
+const SYNC_ACTIONS: Record<string, (() => Promise<void>) | undefined> = {
+  square: syncSquareData,
 };
 
 export default async function SettingsPage() {
@@ -44,6 +50,8 @@ export default async function SettingsPage() {
       {canManagePermissions ? <RolePermissionsTable /> : null}
 
       <IntegrationsSection canManage={canManagePermissions} />
+
+      {canManagePermissions ? <AutomationSection /> : null}
     </div>
   );
 }
@@ -95,10 +103,81 @@ async function IntegrationsSection({ canManage }: { canManage: boolean }) {
                   </SubmitButton>
                 </form>
               ) : null}
+              {canManage && SYNC_ACTIONS[integration.provider] ? (
+                <form action={SYNC_ACTIONS[integration.provider]}>
+                  <SubmitButton
+                    pendingLabel="Syncing…"
+                    className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-50"
+                  >
+                    Sync now
+                  </SubmitButton>
+                </form>
+              ) : null}
             </div>
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+async function AutomationSection() {
+  const supabase = await createClient();
+  const [{ data: rules }, { data: assignees }] = await Promise.all([
+    supabase
+      .from("automation_rules")
+      .select("id, name, trigger_event, action_config, active")
+      .order("created_at", { ascending: false }),
+    supabase.from("profiles").select("id, display_name, email").order("display_name"),
+  ]);
+
+  return (
+    <section className="rounded-lg border border-neutral-200 p-4">
+      <h2 className="text-sm font-medium text-neutral-900">Automation</h2>
+      <p className="mt-1 text-xs text-neutral-500">
+        When something happens in the CRM, automatically create a follow-up task.
+      </p>
+
+      <ul className="mt-3 divide-y divide-neutral-100">
+        {(rules ?? []).map((rule) => {
+          const config = rule.action_config as { title?: string };
+          return (
+            <li key={rule.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+              <div>
+                <p className="text-sm font-medium text-neutral-900">{rule.name}</p>
+                <p className="mt-0.5 text-xs text-neutral-500">
+                  When <span className="font-mono">{rule.trigger_event}</span> → create task &ldquo;{config.title}&rdquo;
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                    rule.active ? "bg-green-100 text-green-800" : "bg-neutral-100 text-neutral-500"
+                  }`}
+                >
+                  {rule.active ? "active" : "paused"}
+                </span>
+                <form action={toggleAutomationRule.bind(null, rule.id, !rule.active)}>
+                  <SubmitButton pendingLabel="…" className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs hover:bg-neutral-50">
+                    {rule.active ? "Pause" : "Activate"}
+                  </SubmitButton>
+                </form>
+                <form action={deleteAutomationRule.bind(null, rule.id)}>
+                  <SubmitButton pendingLabel="…" className="text-neutral-500 hover:text-red-600">
+                    Delete
+                  </SubmitButton>
+                </form>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="mt-4">
+        <AutomationRuleForm
+          assigneeOptions={(assignees ?? []).map((p) => ({ value: p.id, label: p.display_name || p.email || p.id }))}
+        />
+      </div>
     </section>
   );
 }
@@ -111,6 +190,24 @@ function renderMetadata(provider: string, metadata: Record<string, unknown>) {
     return ` · ${metadata.location_count} location${metadata.location_count === 1 ? "" : "s"}${
       found === false ? " (configured SQUARE_LOCATION_ID not found)" : ""
     }`;
+  }
+
+  if (provider === "square" && metadata.last_sync && typeof metadata.last_sync === "object") {
+    const s = metadata.last_sync as {
+      customers?: { created: number; updated: number; matched: number };
+      payments?: { created: number; updated: number };
+      bookings?: { created?: number; notAuthorized?: boolean };
+    };
+    const parts = [
+      s.customers ? `${s.customers.created} new customers` : null,
+      s.payments ? `${s.payments.created} new payments` : null,
+      s.bookings?.notAuthorized
+        ? "bookings not authorized"
+        : s.bookings?.created !== undefined
+          ? `${s.bookings.created} new bookings`
+          : null,
+    ].filter(Boolean);
+    return parts.length ? ` · Last sync: ${parts.join(", ")}` : null;
   }
 
   if (provider === "shopify" && typeof metadata.shop_name === "string") {

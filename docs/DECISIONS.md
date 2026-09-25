@@ -349,6 +349,147 @@ other credential this session), so real values still need to be entered
 directly into `apps/web/.env.local` before this can be proven end-to-end
 the way Square was.
 
+## D-022: Vercel production deploy was building with no Next.js app found
+
+**Context**: the user created the Vercel project (`disco-sundays-crm`,
+`OhitsdiscosundaysLLC/disco-sundays-crm`) and asked for the existing
+deployment to be inspected and verified. `get_project` showed
+`framework: null`, and the production alias (`disco-sundays-crm.vercel.app`)
+returned a platform-level `404 NOT_FOUND` (Vercel's own edge 404 page, not
+the app's) on every path — evidence the build ran with no root directory
+set, so Vercel built from the repo root (no `package.json` with Next.js
+there) instead of `apps/web`.
+**Decision**: set the project's Root Directory to `apps/web` and framework
+to `nextjs` via `update_project`, then triggered a fresh production
+deployment. This surfaced a second, deeper bug: `NEXT_PUBLIC_SUPABASE_URL`
+and `NEXT_PUBLIC_SUPABASE_ANON_KEY` were present in the project's env vars
+(set automatically at project-import time) but middleware crashed with
+`MIDDLEWARE_INVOCATION_FAILED` on every request — `lib/supabase/middleware.ts`
+dereferences both with `!` and `createServerClient` throws if either is
+empty. Fixed by setting both explicitly from the values already in
+`apps/web/.env.local` (these two vars are meant to be public — they ship
+in every page's own JS bundle already — unlike the service role key or the
+Square/Shopify secrets, which were never touched), then triggering a third
+deployment (Next.js inlines `NEXT_PUBLIC_*` at *build* time, so a redeploy
+of the same build artifact wouldn't have picked up the fix).
+**Verified**: `disco-sundays-crm.vercel.app` now returns the real login
+page (confirmed via a fresh browser tab + network request, not cached).
+Also confirmed empirically that Vercel Authentication (SSO protection,
+`all_except_custom_domains`) does **not** gate the assigned production
+alias — only the ephemeral per-deployment hash URLs (e.g.
+`disco-sundays-pjibbx8wu-....vercel.app`) redirect to Vercel's login. This
+is the desired behavior (public production, private preview builds) and
+needed no further change.
+
+## D-023: Square read-sync adapter — pull-based, service-role writes, defensive matching
+
+**Context**: Phase 3 built the connectivity check only (`checkSquareConnection`);
+the actual customer/booking/payment/refund sync was still open. Per D-011,
+Square stays the source of truth and the CRM only ever reads from it.
+**Decision**: built `lib/integrations/square/sync.ts` as an on-demand pull
+sync (a "Sync now" button next to Square's existing "Test connection" one
+in Settings → Integrations), not a webhook — matches the standing
+instruction not to register Square webhooks without separate explicit
+approval. Customer matching follows the exact rules in this file's
+"Customer matching / duplicate prevention" section: external ID → email →
+phone → create new, never fuzzy-merge. Payments and refunds are written
+with the **service-role client** (`lib/supabase/service.ts`), because
+`payments`/`refunds` intentionally have no authenticated-user insert
+policy (0006_phase3_services_bookings_payments.sql: "written only by a
+future webhook route handler using the service role") — the sync's own
+`syncSquareData()` server action is what gates *who* may trigger a run
+(`settings:edit`), same posture as a webhook handler being the only writer.
+Bookings require Square's Appointments API, which not every Square account
+has enabled — a 401/403 there is caught and reported as
+`{notAuthorized: true, error}` rather than failing the whole sync, since
+customers/payments/refunds should still succeed independently.
+Added `supabase/migrations/0012_phase_square_sync_idempotency.sql`
+(missing unique index on `refunds.provider_refund_id`, same idempotency
+pattern as `payments.provider_transaction_id`) so re-running the sync
+never creates duplicate refund rows.
+**Bugs found and fixed during live verification against the real Square
+account** (not hypothetical — both reproduced against real data):
+1. Running two sync passes back-to-back raced on `customers_square_id_key`
+   — the second pass's lookup ran before the first pass's insert for the
+   same Square customer had committed. Fixed by catching `23505` on the
+   insert and re-fetching instead of failing the run.
+2. The real Square account has more than one customer record sharing the
+   same email address (a genuine data-quality issue in Square, not a bug
+   here) — hit `customers_email_key` on insert. Fixed the same way, and
+   also changed the email-match path to only claim `external_square_customer_id`
+   when the matched CRM customer doesn't already have a different one set,
+   so a second Square record with a shared email can't steal the first
+   record's canonical link.
+**Verified**: live-ran against the real production Square account via a
+one-off script (deleted after use — not part of the shipped app) rather
+than through the browser, since no active login session was available
+this turn. `npx tsx` was used to invoke `runSquareSync()` directly.
+**Customer sync fully succeeded**: 1,375 real Square customers
+matched/created with no duplicates after the fix (D-023's two bugs above).
+**Payments/refunds/bookings did not run** — Square's API returned
+`INVALID_REQUEST_ERROR: BAD_REQUEST: Not authorized to list payments for
+location_id: BRQ3J5MYKNYX`, confirming the location ID typo already
+flagged in D-020/open-question 3 is now a real functional blocker, not
+just a cosmetic one. `squarePaginate()`'s error message was improved to
+include Square's `detail` field (previously just category+code) so this
+kind of failure is immediately actionable from a log line next time. Once
+`SQUARE_LOCATION_ID` is corrected to `LBRQ3J5MYKNYX`, re-running "Sync
+now" in Settings → Integrations will pick up payments/refunds/bookings
+with no code changes needed — the fix is purely the env var.
+
+## D-024: Tasks module — resource-level RLS, no per-row assignee restriction
+
+**Context**: `role_permissions` already had `tasks` rows seeded for every
+role since 0001_foundation.sql; only the schema/UI were missing.
+**Decision**: `supabase/migrations/0013_phase_tasks.sql` adds
+`task_statuses` (same configurable-status pattern as `booking_statuses`/
+`project_statuses`) and `tasks`, with an optional polymorphic
+`related_type`/`related_id` pair (same pattern as `payments.related_id` —
+intentionally no FK). RLS is resource-level only (`tasks:view` sees every
+task), matching every other module in this app — no "only see tasks
+assigned to me" row filter, since nothing in the spec calls for it and
+every other resource in this CRM works the same way. The v1 UI only
+supports linking a task to a customer (schema supports lead/project/
+booking too); revisit if a real need for those shows up.
+
+## D-025: Reports and Global Search — read the viewer's own RLS, no service role
+
+**Context**: both are net-new (spec priority list: Tasks, Reports, Global
+Search, Automation).
+**Decision**: both run every query through the normal per-request
+authenticated client, never the service role. A role with `reports:view`
+but not, say, `payments:view` simply sees that section of the Reports page
+come back empty — the same as if they'd tried to load `/payments`
+directly. This keeps Reports/Search from ever becoming a permission
+bypass; it can only ever show what the RLS-scoped session could already
+see elsewhere. Global Search covers customers/leads/projects/galleries/
+referrals in v1 (the resources with an obvious single text field to match
+against); bookings/payments/memberships are reachable through their own
+list pages and weren't included to avoid a pile of low-value partial-match
+queries (e.g. matching a booking by `notes` text is rarely how anyone
+would actually search).
+
+## D-026: Automation engine — activities as the event bus, one action type
+
+**Context**: spec §63 calls for a minimal automation engine, last in the
+user's stated priority order (Square/Shopify → Tasks/Reports/Search →
+Automation).
+**Decision**: no new event bus — `activities` is already written by every
+module in this app for the customer timeline, so it's reused as the
+trigger source. `automation_rules` (trigger_event, action_type,
+action_config jsonb, active) + a `SECURITY DEFINER` trigger on
+`activities` inserts, same posture as `apply_reward_transaction()`
+(D-010): the acting user's own `tasks` permission shouldn't gate whether
+an automation fires on their behalf. v1 ships exactly one `action_type`
+(`create_task`) — not a generic workflow engine with branching/delays/
+multiple action kinds. Add a second action type only when a real one is
+needed, not speculatively.
+**Verified**: direct RLS simulation — created a rule, inserted a matching
+activity, confirmed the task was auto-created with the configured title/
+priority/due date, then confirmed `run_automation_rules()` itself is not
+directly callable via RPC by `anon` or `authenticated` (Supabase security
+advisor re-run clean of new findings).
+
 ---
 
 ## Open questions for the user (not decided unilaterally)
@@ -361,12 +502,20 @@ inferred, per RULE 6 — flagged rather than guessed:
    `origin/main` matches local `main` exactly). (D-001)
 2. ~~**`SUPABASE_SERVICE_ROLE_KEY`**~~ — resolved 2026-09-24, configured
    and verified working. (D-019)
-3. ~~**Square credentials**~~ — resolved 2026-09-24: configured, and
-   connectivity verified live (D-020). One small non-secret data issue
-   found: `SQUARE_LOCATION_ID` has a typo (missing leading `L`) — see
-   D-020 for the exact fix. `SQUARE_WEBHOOK_SIGNATURE_KEY` still
-   outstanding (needed only once a webhook subscription is actually
-   registered, a write/config action requiring explicit approval first).
+3. **`SQUARE_LOCATION_ID` typo — now a functional blocker, not just
+   cosmetic**: `apps/web/.env.local` has `BRQ3J5MYKNYX`, missing the
+   leading `L` from the real ID `LBRQ3J5MYKNYX` ("Hanover, MD" — first
+   found in D-020). Customer sync doesn't depend on it and works fully
+   (1,375 real customers synced, D-023). But **payments, refunds, and
+   bookings sync all fail** with Square's own
+   `Not authorized to list payments for location_id: BRQ3J5MYKNYX` — this
+   is not a code bug, it's this one-character typo. Fix: edit
+   `apps/web/.env.local`, change `SQUARE_LOCATION_ID` to `LBRQ3J5MYKNYX`
+   (in Vercel's env vars too, for production), then click "Sync now" in
+   Settings → Integrations again — no code changes needed.
+   `SQUARE_WEBHOOK_SIGNATURE_KEY` still outstanding separately (needed
+   only once a webhook subscription is actually registered, a write/config
+   action requiring explicit approval first).
 4. **Base44 credentials**: still not available. Needed before Phase 8
    (Base44) can move from architecture to live integration.
 5. **Shopify credentials**: a Shopify Dev Dashboard app ("Disco Sundays
@@ -378,14 +527,12 @@ inferred, per RULE 6 — flagged rather than guessed:
    `apps/web/.env.local` / Vercel env vars as `SHOPIFY_STORE_DOMAIN`
    (the `*.myshopify.com` domain, not `discosundays.com`),
    `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`, `SHOPIFY_API_VERSION`.
-6. **Vercel target**: confirmed blocked, not just unconfigured — the
-   Vercel MCP connector reports zero teams and zero projects visible to
-   this session, account-wide, and a direct lookup of a project named
-   `disco-sundays-crm` 404s. Cannot create a project without a team ID to
-   create it under. Either authorize Vercel access for this session, or
-   create the project directly at vercel.com (Add New → Project → Import
-   Git Repository → `OhitsdiscosundaysLLC/disco-sundays-crm`, root
-   directory `apps/web`).
+6. ~~**Vercel target**~~ — resolved 2026-09-25: the user created the
+   project and connected the repo; Claude Code fixed the Root Directory
+   (was unset, causing every request to 404) and the two `NEXT_PUBLIC_*`
+   Supabase vars (present but the middleware crashed on them), then
+   redeployed. Production URL is confirmed live:
+   `https://disco-sundays-crm.vercel.app` — see D-022.
 7. **Auth leaked-password protection**: Supabase's security advisor flags
    this as disabled (checks new passwords against HaveIBeenPwned). Cheap to
    enable, not urgent — a Dashboard → Authentication → Policies toggle, not a
