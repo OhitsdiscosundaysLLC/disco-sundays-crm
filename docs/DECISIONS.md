@@ -550,6 +550,32 @@ re-run "Test connection" in Settings → Integrations.
 
 ---
 
+## D-029: Square catalog sync — fills the gap that was skipping every booking
+
+**Context**: D-023's sync correctly synced customers/payments/refunds,
+but every booking was skipped with `skippedNoService: 9` because
+bookings reference a Square `service_variation_id` and nothing had ever
+synced Square's catalog into `services.external_square_service_id` for
+that ID to match against.
+**Decision**: added `syncCatalog()` to `lib/integrations/square/sync.ts`
+— pulls `GET /v2/catalog/list?types=ITEM` and upserts each
+`ITEM_VARIATION` (the actual unit bookings reference, not the parent
+item) into `services`, keyed by `external_square_service_id = variation
+id`. Name is `"{item name} — {variation name}"` unless the variation is
+Square's default "Regular", price/currency from
+`item_variation_data.price_money`, duration from `service_duration`
+(Square reports this in milliseconds; converted to minutes). Runs before
+`syncBookings()` in `runSquareSync()` so newly-synced services are
+available to match against in the same pass. Wrapped in its own
+try/catch — if catalog sync fails for any reason, the rest of the sync
+(customers/payments/refunds, and bookings falling back to skipping)
+still completes, matching the resilience posture already established for
+bookings' own Appointments-API-unavailable case.
+**Verified**: live against the real Square catalog; see the sync result
+recorded in this session's changelog entry for exact counts.
+
+---
+
 ## Open questions for the user (not decided unilaterally)
 
 These affect money, existing integrations, or things that can't be safely

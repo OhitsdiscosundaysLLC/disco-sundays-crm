@@ -45,7 +45,7 @@ table reflects reality as of the Claude Code continuation.
 | 4 — Projects + Galleries | Schema + full management UI done (create/publish/upload/cover/delete). Public `/gallery/[slug]` + `/embed/gallery/[id]` routes are built but need `SUPABASE_SERVICE_ROLE_KEY` (still not set anywhere — see below) to actually serve content — currently show an honest "not configured" message. Live-verified: customer/gallery/project creation, settings, publish/unpublish all confirmed against production Supabase. File upload and the public password gate itself weren't exercised (no file-picker in this sandbox's browser automation; service key not set) |
 | 6 — Memberships | Done: schema + full CRUD UI (plans, memberships, live-computed usage from bookings). RLS verified via direct database simulation (see Phase 7 row — same method) |
 | 7 — Referrals & Rewards | Done: schema + full UI (referral codes, qualification workflow, append-only reward ledger, idempotent "issue reward" action). RLS verified via direct database simulation — real bug found and fixed same-pass (reward-balance trigger function was directly RPC-callable, revoked). `SUPABASE_SERVICE_ROLE_KEY` configured and verified live via the public gallery routes (first real end-to-end proof they work) |
-| Integrations status | Done: `integrations` table + Settings "Test connection"/"Sync now" UI (spec §34). **Square fully working**: connectivity + full read-sync verified live — 158 real payments synced ($18,105.27), 1,426 customers matched, after fixing the `SQUARE_LOCATION_ID` typo (D-020, D-023, D-027). **Shopify blocked on a real, diagnosed cause**: `app_not_installed` — the Dev Dashboard app was never installed on the store. All 4 env vars confirmed correctly configured; this is not a credential problem (D-028) |
+| Integrations status | Done: `integrations` table + Settings "Test connection"/"Sync now" UI (spec §34). **Square fully working, all 4 sub-syncs**: connectivity + customers (1,426 matched) + catalog (66 services) + payments (158 synced, $18,105.27) + bookings (9/9 created, catalog sync closed the gap that was skipping all of them) — after fixing `SQUARE_LOCATION_ID` and adding catalog sync (D-020, D-023, D-027, D-029). **Shopify blocked on a real, diagnosed cause**: `app_not_installed` — the Dev Dashboard app was never installed on the store. All 4 env vars confirmed correctly configured; this is not a credential problem (D-028) |
 | Vercel deploy | Done: production live at `https://disco-sundays-crm.vercel.app` (D-022). Two real bugs found and fixed: Root Directory wasn't set (every request 404'd), and the public Supabase env vars were present but middleware crashed on them |
 | Tasks | Done: schema + full CRUD UI, RLS-verified (D-024) |
 | Reports | Done: `/reports`, real live queries only, no fabricated stats (D-025) |
@@ -447,9 +447,6 @@ Next, in order —
 3. Square webhook registration — architecture (`webhook_events`,
    signature verification) can be written and unit-tested now, but not
    registered with the live Square account without explicit approval.
-   Square catalog/service sync (to stop skipping bookings for "no
-   matching service") is a reasonable next increment if the user wants
-   bookings synced too — not started yet, no catalog-sync code exists.
 4. Security hardening pass + end-to-end workflow test per the "Final
    Definition of Done" criteria, once the above are in.
 

@@ -52,6 +52,26 @@ type SquareBooking = {
   appointment_segments?: { service_variation_id?: string; duration_minutes?: number }[];
 };
 
+type SquareCatalogVariation = {
+  id: string;
+  item_variation_data?: {
+    name?: string;
+    price_money?: { amount: number; currency: string };
+    service_duration?: number;
+  };
+};
+
+type SquareCatalogItem = {
+  id: string;
+  type: string;
+  item_data?: {
+    name?: string;
+    description?: string;
+    category_id?: string;
+    variations?: SquareCatalogVariation[];
+  };
+};
+
 async function squarePaginate<T>(
   creds: SquareCredentials,
   path: string,
@@ -184,6 +204,7 @@ async function matchOrCreateCustomer(
 
 export type SquareSyncSummary = {
   customers: { created: number; updated: number; matched: number; total: number };
+  catalog: { created: number; updated: number; total: number };
   payments: { created: number; updated: number; skippedNoCustomer: number; failed: number; total: number };
   refunds: { created: number; skippedNoPayment: number; failed: number; total: number };
   bookings:
@@ -202,6 +223,57 @@ async function syncCustomers(supabase: Svc, creds: SquareCredentials) {
   for (const sq of squareCustomers) {
     const { outcome } = await matchOrCreateCustomer(supabase, sq);
     summary[outcome === "matched" ? "matched" : outcome === "updated" ? "updated" : "created"]++;
+  }
+
+  return summary;
+}
+
+/**
+ * Syncs Square's catalog ITEM_VARIATION objects into services, keyed by
+ * external_square_service_id = variation id — the same id bookings
+ * reference via appointment_segments[].service_variation_id. Without
+ * this, booking sync has nothing to match against and skips every
+ * booking (see syncBookings' skippedNoService count).
+ */
+async function syncCatalog(supabase: Svc, creds: SquareCredentials) {
+  const items = await squarePaginate<SquareCatalogItem>(creds, "/catalog/list?types=ITEM&limit=100", "objects");
+  const summary = { created: 0, updated: 0, total: 0 };
+
+  for (const item of items) {
+    const itemName = item.item_data?.name ?? "Untitled";
+    const variations = item.item_data?.variations ?? [];
+
+    for (const variation of variations) {
+      summary.total++;
+      const variationName = variation.item_variation_data?.name;
+      const name = variationName && variationName !== "Regular" ? `${itemName} — ${variationName}` : itemName;
+      const price = variation.item_variation_data?.price_money?.amount;
+      const durationMinutes = variation.item_variation_data?.service_duration
+        ? Math.round(variation.item_variation_data.service_duration / 60000)
+        : null;
+
+      const { data: existing } = await supabase
+        .from("services")
+        .select("id")
+        .eq("external_square_service_id", variation.id)
+        .maybeSingle();
+
+      const row = {
+        name,
+        price: price !== undefined ? centsToDecimal(price) : null,
+        currency: variation.item_variation_data?.price_money?.currency ?? "USD",
+        duration_minutes: durationMinutes,
+        external_square_service_id: variation.id,
+      };
+
+      if (existing) {
+        await supabase.from("services").update(row).eq("id", existing.id);
+        summary.updated++;
+      } else {
+        await supabase.from("services").insert(row);
+        summary.created++;
+      }
+    }
   }
 
   return summary;
@@ -453,11 +525,22 @@ export async function runSquareSync(): Promise<SquareSyncResult> {
 
   try {
     const customers = await syncCustomers(supabase, creds);
+
+    let catalog: SquareSyncSummary["catalog"] = { created: 0, updated: 0, total: 0 };
+    try {
+      catalog = await syncCatalog(supabase, creds);
+    } catch (err) {
+      // Catalog sync failing shouldn't block payments/refunds — bookings
+      // will just have nothing to match against and skip, same as if
+      // this step were never run.
+      console.error("Square sync: catalog sync failed", err instanceof Error ? err.message : err);
+    }
+
     const payments = await syncPayments(supabase, creds);
     const refunds = await syncRefunds(supabase, creds);
     const bookings = await syncBookings(supabase, creds);
 
-    return { ok: true, summary: { customers, payments, refunds, bookings } };
+    return { ok: true, summary: { customers, catalog, payments, refunds, bookings } };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Square sync failed." };
   }

@@ -195,11 +195,13 @@ function renderMetadata(provider: string, metadata: Record<string, unknown>) {
   if (provider === "square" && metadata.last_sync && typeof metadata.last_sync === "object") {
     const s = metadata.last_sync as {
       customers?: { created: number; updated: number; matched: number };
+      catalog?: { created: number; updated: number };
       payments?: { created: number; updated: number };
       bookings?: { created?: number; notAuthorized?: boolean };
     };
     const parts = [
       s.customers ? `${s.customers.created} new customers` : null,
+      s.catalog ? `${s.catalog.created} new services` : null,
       s.payments ? `${s.payments.created} new payments` : null,
       s.bookings?.notAuthorized
         ? "bookings not authorized"

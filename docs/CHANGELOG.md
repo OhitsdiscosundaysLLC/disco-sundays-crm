@@ -21,6 +21,17 @@ newest first.
   (9 for no matching service catalog entry — expected, catalog sync isn't
   built yet; 1 for no customer). Zero failures. `integrations` table
   updated to reflect this real result.
+- **Square catalog sync added** (D-029), closing a real gap the location
+  ID fix exposed: bookings were being skipped 100% of the time because
+  nothing had ever synced Square's catalog into `services`, so
+  `appointment_segments[].service_variation_id` had nothing to match
+  against. Added `syncCatalog()` — pulls Square's `ITEM_VARIATION`
+  catalog objects and upserts them into `services` keyed by
+  `external_square_service_id`. Re-ran the full sync: **66 services
+  created**, and **all 9 previously-skipped bookings now synced
+  correctly** (only 1 booking still skipped, for having no Square
+  customer — legitimate, not a bug). Zero failures across every phase.
+  `integrations` table updated to reflect this complete result.
 - **Shopify error root-caused, not guessed** (D-028): read the actual
   stored error from the last "Test connection" run rather than
   re-diagnosing blind — Shopify's own OAuth endpoint returned

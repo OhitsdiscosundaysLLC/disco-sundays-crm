@@ -141,15 +141,20 @@ project — Vercel server-side environment variables for production, and
     (`notAuthorized: true`) rather than failing the whole sync — customer/
     payment/refund sync still completes independently.
   - **Fully live-verified against the real production Square account**
-    (2026-09-25, D-027, after the `SQUARE_LOCATION_ID` fix): 1,426
-    customers matched / 20 updated / 1 created, **158 payments synced**
-    ($18,105.27 in real completed revenue), 1 refund correctly skipped
-    (payment outside this batch), 10 bookings found and correctly skipped
-    (9 for no matching service catalog entry — catalog sync isn't built
-    yet, not a bug; 1 for no customer). Zero failures across every phase.
-    Also handled a genuine data-quality issue found in Square itself
-    (multiple customer records sharing one email) without crashing or
-    corrupting data.
+    (2026-09-25, D-027/D-029, after the `SQUARE_LOCATION_ID` fix): 1,426
+    customers matched, **158 payments synced** ($18,105.27 in real
+    completed revenue), and — after adding catalog sync (below) —
+    **66 services synced and all 9 previously-skipped bookings now
+    created correctly** (1 booking still skipped, for having no Square
+    customer — legitimate). Zero failures across every phase. Also
+    handled a genuine data-quality issue found in Square itself (multiple
+    customer records sharing one email) without crashing or corrupting
+    data.
+  - `syncCatalog()` pulls Square's catalog `ITEM_VARIATION` objects
+    (the actual unit bookings reference) and upserts them into
+    `services`, keyed by `external_square_service_id`. Without this,
+    booking sync had nothing to match a booking's
+    `service_variation_id` against and skipped every booking.
 - Mechanism for **webhooks** (not yet registered): Square webhooks,
   signature verified with `SQUARE_WEBHOOK_SIGNATURE_KEY`, `webhook_events`
   row keyed on Square's event id, idempotent processing, retry/error
