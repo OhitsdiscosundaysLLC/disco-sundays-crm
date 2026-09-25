@@ -3,6 +3,37 @@
 All notable changes to the Disco Sundays CRM project are recorded here,
 newest first.
 
+## Claude Code handoff continuation — Square location ID fix verified, Shopify root-caused — 2026-09-25 (second pass)
+
+- **Square `SQUARE_LOCATION_ID` fix confirmed live end-to-end** (D-027).
+  The user corrected the typo (`BRQ3J5MYKNYX` → `LBRQ3J5MYKNYX`) locally
+  and in Vercel. Verified without ever printing the value: local file
+  checked via length + trimmed-equality match, Vercel's copy checked via
+  its env metadata (`updatedAt` newer than `createdAt`) — a decrypt
+  request was correctly auto-blocked by the safety classifier and not
+  worked around. Triggered a fresh production deployment (server-only env
+  var changes need a new deployment on Vercel), then re-verified:
+  `checkSquareConnection()` now returns `configuredLocationFound: true`.
+  Re-ran the full sync: **payments went from 0 to 158 created**
+  ($18,105.27 in real completed revenue), proving the fix. Customers:
+  1 created / 20 updated / 1,426 matched. Refunds: 1 found, correctly
+  skipped (payment not in this batch). Bookings: 10 found, all skipped
+  (9 for no matching service catalog entry — expected, catalog sync isn't
+  built yet; 1 for no customer). Zero failures. `integrations` table
+  updated to reflect this real result.
+- **Shopify error root-caused, not guessed** (D-028): read the actual
+  stored error from the last "Test connection" run rather than
+  re-diagnosing blind — Shopify's own OAuth endpoint returned
+  `app_not_installed: The application is not installed on this shop`.
+  All 4 env vars independently verified present, correctly named, valid
+  `*.myshopify.com` domain format — this is not a credential or config
+  issue. Confirmed against Shopify's current Dev Dashboard docs: an app
+  must be explicitly installed on the store before client-credentials
+  auth works. Exact manual action identified and reported to the user
+  (Dev Dashboard → app → Home → Install app → select the store →
+  Install) — not performed by Claude Code, since installing an app on a
+  live store is a real action on the user's account.
+
 ## Claude Code handoff continuation — Vercel live, Square sync, Tasks, Reports, Search — 2026-09-25
 
 - **Vercel production deploy fixed and verified live** (D-022). The user

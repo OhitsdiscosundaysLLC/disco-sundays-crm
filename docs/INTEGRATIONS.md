@@ -89,15 +89,25 @@ actually provides, updated in both `.env.example` files):
 per the source-of-truth rules above): `read_customers`, `read_orders`,
 `read_products`. No `write_*` scopes requested or needed.
 
-**Manual steps remaining**: the app already exists (done). The Client
-ID/Secret were pasted into chat and, per this project's standing rule,
-were never used or stored — get fresh values from the Dev Dashboard app's
-credentials page and put them directly into `apps/web/.env.local` /
-Vercel env vars. The app's placeholder App URL (`https://example.com`)
-should be updated to the real production URL once Vercel deployment is
-resolved — do not release a new app version until the user confirms that
-URL and approves the change (per the user's explicit instruction not to
-touch the Shopify app version yet).
+**Manual steps remaining**: fresh Client ID/Secret were entered directly
+into `apps/web/.env.local` and Vercel (2026-09-25) — resolved, not from
+the earlier chat paste. All four env vars confirmed present with correct
+names and a valid `*.myshopify.com` store domain. **Live authentication
+still fails** with a real, specific error from Shopify's own OAuth
+endpoint: `app_not_installed — The application is not installed on this
+shop` (D-028). This is not a credential problem — it's that the Dev
+Dashboard app has never been installed on the store. **Exact fix**: Dev
+Dashboard → "Disco Sundays CRM" → Home → scroll down → **Install app** →
+select `disco-sundays.myshopify.com` → **Install**. Confirmed against
+Shopify's current docs (see D-028's link). Re-run "Test connection" in
+Settings → Integrations afterward.
+
+The app's placeholder App URL (`https://example.com`) should be updated
+to the real production URL — production is now live at
+`https://disco-sundays-crm.vercel.app` — but do not release a new app
+version until the user explicitly approves that specific change (per the
+user's standing instruction not to touch the Shopify app version without
+approval).
 
 **Webhooks required once the app exists**: `orders/create`, `orders/updated`
 (order + payment-status sync), `customers/create`, `customers/update`
@@ -130,10 +140,16 @@ project — Vercel server-side environment variables for production, and
     Square account doesn't have it enabled, this is reported honestly
     (`notAuthorized: true`) rather than failing the whole sync — customer/
     payment/refund sync still completes independently.
-  - Live-verified against the real production Square account: 1,000+ real
-    customers synced correctly, including handling a genuine data-quality
-    issue found in Square itself (multiple customer records sharing one
-    email) without crashing or corrupting data.
+  - **Fully live-verified against the real production Square account**
+    (2026-09-25, D-027, after the `SQUARE_LOCATION_ID` fix): 1,426
+    customers matched / 20 updated / 1 created, **158 payments synced**
+    ($18,105.27 in real completed revenue), 1 refund correctly skipped
+    (payment outside this batch), 10 bookings found and correctly skipped
+    (9 for no matching service catalog entry — catalog sync isn't built
+    yet, not a bug; 1 for no customer). Zero failures across every phase.
+    Also handled a genuine data-quality issue found in Square itself
+    (multiple customer records sharing one email) without crashing or
+    corrupting data.
 - Mechanism for **webhooks** (not yet registered): Square webhooks,
   signature verified with `SQUARE_WEBHOOK_SIGNATURE_KEY`, `webhook_events`
   row keyed on Square's event id, idempotent processing, retry/error

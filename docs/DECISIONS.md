@@ -492,6 +492,64 @@ advisor re-run clean of new findings).
 
 ---
 
+## D-027: SQUARE_LOCATION_ID fix confirmed live
+
+**Context**: the user corrected the typo flagged in D-020/D-023
+(`BRQ3J5MYKNYX` → `LBRQ3J5MYKNYX`) in both `apps/web/.env.local` and
+Vercel's production env vars.
+**Decision/process**: verified without ever reading or printing the
+actual value — confirmed the local file's value length and a trimmed
+equality check against the known-correct string the user supplied in
+chat (not a secret paste; the user stated the correct location ID
+directly as part of describing the fix, same as D-020's original report).
+Confirmed Vercel's copy via its env var metadata (`updatedAt` newer than
+`createdAt`, `updatedBy` set) — value itself was never decrypted (a
+decrypt request was in fact auto-blocked by the safety classifier, which
+was the right call). Triggered a fresh production deployment since
+server-only env var changes need a new deployment to take effect on
+Vercel, then re-ran `checkSquareConnection()`:
+`{"ok":true,"locationCount":2,"configuredLocationFound":true}` — the
+corrected ID now matches a real location on the account.
+**Full sync re-run, fix confirmed working end to end**: customers 1
+created / 20 updated / 1,426 matched (1,447 Square records processed —
+more than one Square customer record maps to some already-linked CRM
+customers via email, handled by the D-023 hardening without duplicating
+or overwriting); **payments: 158 created** (the location fix's proof —
+this was 0 before), totaling $18,105.27 in real completed revenue, 168
+skipped for having no associated Square customer (Square allows guest/
+no-customer payments — expected, not a bug); refunds: 0 created, 1
+skipped (its payment wasn't in this batch); bookings: 0 created, 9
+skipped for no matching `services.external_square_service_id` (the known
+v1 limitation — service catalog sync was never built, so booking→service
+matching has nothing to match against yet — not a new bug), 1 skipped
+for no customer. Zero failures across all four phases.
+
+## D-028: Shopify error root-caused — app not installed on the store, not a config problem
+
+**Context**: the user reported the Shopify integration still erroring
+despite credentials being entered, and asked for the actual cause to be
+diagnosed rather than guessed.
+**Decision/process**: read the *stored* error from a prior "Test
+connection" run (`integrations.metadata.error` — safe to read, it never
+contains secrets by design) rather than re-running a new test blind. The
+real error, from Shopify's own OAuth endpoint:
+`Oauth error app_not_installed: The application is not installed on this
+shop.` This is not a credential, scope, API-version, or domain-format
+problem — all four env vars were independently verified present, in the
+right names, with the store domain in valid `*.myshopify.com` format.
+Confirmed against Shopify's own current docs
+(<https://shopify.dev/docs/apps/build/dev-dashboard/create-apps-using-dev-dashboard>):
+a Dev Dashboard app must be explicitly **installed** on a specific store
+before the client-credentials grant will issue it a token — creating the
+app and having a published version isn't enough on its own.
+**Exact manual action required (Claude Code cannot do this — it's an
+action on the live Shopify account)**: in the Shopify Dev Dashboard, open
+the "Disco Sundays CRM" app → **Home** → scroll down → **Install app** →
+select the `disco-sundays.myshopify.com` store → **Install**. After that,
+re-run "Test connection" in Settings → Integrations.
+
+---
+
 ## Open questions for the user (not decided unilaterally)
 
 These affect money, existing integrations, or things that can't be safely
@@ -502,31 +560,22 @@ inferred, per RULE 6 — flagged rather than guessed:
    `origin/main` matches local `main` exactly). (D-001)
 2. ~~**`SUPABASE_SERVICE_ROLE_KEY`**~~ — resolved 2026-09-24, configured
    and verified working. (D-019)
-3. **`SQUARE_LOCATION_ID` typo — now a functional blocker, not just
-   cosmetic**: `apps/web/.env.local` has `BRQ3J5MYKNYX`, missing the
-   leading `L` from the real ID `LBRQ3J5MYKNYX` ("Hanover, MD" — first
-   found in D-020). Customer sync doesn't depend on it and works fully
-   (1,375 real customers synced, D-023). But **payments, refunds, and
-   bookings sync all fail** with Square's own
-   `Not authorized to list payments for location_id: BRQ3J5MYKNYX` — this
-   is not a code bug, it's this one-character typo. Fix: edit
-   `apps/web/.env.local`, change `SQUARE_LOCATION_ID` to `LBRQ3J5MYKNYX`
-   (in Vercel's env vars too, for production), then click "Sync now" in
-   Settings → Integrations again — no code changes needed.
+3. ~~**`SQUARE_LOCATION_ID` typo**~~ — resolved 2026-09-25: the user
+   corrected it to `LBRQ3J5MYKNYX` locally and in Vercel. Verified live
+   (D-027): `configuredLocationFound: true`, full sync re-run with 158
+   real payments synced ($18,105.27), zero failures.
    `SQUARE_WEBHOOK_SIGNATURE_KEY` still outstanding separately (needed
    only once a webhook subscription is actually registered, a write/config
    action requiring explicit approval first).
 4. **Base44 credentials**: still not available. Needed before Phase 8
    (Base44) can move from architecture to live integration.
-5. **Shopify credentials**: a Shopify Dev Dashboard app ("Disco Sundays
-   CRM") now exists, but the credential values (Client ID/Secret) were
-   pasted into chat and, per this project's standing rule, were never
-   used or stored — see the chat record for 2026-09-24. Still not
-   configured anywhere reachable by this project. Get them from the
-   Shopify Dev Dashboard app's credentials page; put them in
-   `apps/web/.env.local` / Vercel env vars as `SHOPIFY_STORE_DOMAIN`
-   (the `*.myshopify.com` domain, not `discosundays.com`),
-   `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`, `SHOPIFY_API_VERSION`.
+5. ~~**Shopify credentials**~~ — resolved 2026-09-25: fresh Client ID/
+   Secret (not the ones pasted into chat) entered directly into
+   `apps/web/.env.local` and Vercel. All 4 vars verified present, correctly
+   named, valid store-domain format. **Still blocked**, but on a different,
+   diagnosed issue: the Dev Dashboard app isn't installed on the store —
+   see D-028 for the exact manual fix (Dev Dashboard → app → Home →
+   Install app).
 6. ~~**Vercel target**~~ — resolved 2026-09-25: the user created the
    project and connected the repo; Claude Code fixed the Root Directory
    (was unset, causing every request to 404) and the two `NEXT_PUBLIC_*`
