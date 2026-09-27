@@ -45,7 +45,7 @@ table reflects reality as of the Claude Code continuation.
 | 4 — Projects + Galleries | Schema + full management UI done (create/publish/upload/cover/delete). Public `/gallery/[slug]` + `/embed/gallery/[id]` routes are built but need `SUPABASE_SERVICE_ROLE_KEY` (still not set anywhere — see below) to actually serve content — currently show an honest "not configured" message. Live-verified: customer/gallery/project creation, settings, publish/unpublish all confirmed against production Supabase. File upload and the public password gate itself weren't exercised (no file-picker in this sandbox's browser automation; service key not set) |
 | 6 — Memberships | Done: schema + full CRUD UI (plans, memberships, live-computed usage from bookings). RLS verified via direct database simulation (see Phase 7 row — same method) |
 | 7 — Referrals & Rewards | Done: schema + full UI (referral codes, qualification workflow, append-only reward ledger, idempotent "issue reward" action). RLS verified via direct database simulation — real bug found and fixed same-pass (reward-balance trigger function was directly RPC-callable, revoked). `SUPABASE_SERVICE_ROLE_KEY` configured and verified live via the public gallery routes (first real end-to-end proof they work) |
-| Integrations status | Done: `integrations` table + Settings "Test connection"/"Sync now" UI (spec §34). **Square fully working, all 4 sub-syncs**: connectivity + customers (1,426 matched) + catalog (66 services) + payments (158 synced, $18,105.27) + bookings (9/9 created, catalog sync closed the gap that was skipping all of them) — after fixing `SQUARE_LOCATION_ID` and adding catalog sync (D-020, D-023, D-027, D-029). **Shopify: fully verified working** — auth, shop identity, and all three reads (793 customers/98 orders/18 products) confirmed live after credentials + app install + scope approval (D-028, D-030, D-031). Sync module not built yet — architecture planned and reported, awaiting approval to build/run (D-032) |
+| Integrations status | Done: `integrations` table + Settings "Test connection"/"Sync now" UI (spec §34). **Square fully working, all 4 sub-syncs**: connectivity + customers (1,426 matched) + catalog (66 services) + payments (158 synced, $18,105.27) + bookings (9/9 created, catalog sync closed the gap that was skipping all of them) — after fixing `SQUARE_LOCATION_ID` and adding catalog sync (D-020, D-023, D-027, D-029). **Shopify: sync module built and safety-tested** — auth/shop/reads verified live (D-028, D-030, D-031), `lib/integrations/shopify/sync.ts` built and proven idempotent against 5 real records per resource with zero corruption of Square data (D-032, D-033). **Full 793/98/18 sync not yet run — awaiting explicit approval.** No "Sync now" button wired for Shopify yet |
 | Vercel deploy | Done: production live at `https://disco-sundays-crm.vercel.app` (D-022). Two real bugs found and fixed: Root Directory wasn't set (every request 404'd), and the public Supabase env vars were present but middleware crashed on them |
 | Tasks | Done: schema + full CRUD UI, RLS-verified (D-024) |
 | Reports | Done: `/reports`, real live queries only, no fabricated stats (D-025) |
@@ -427,29 +427,23 @@ verified live, full sync re-run: 158 payments/$18,105.27 synced, zero
 failures. No further Square action needed until webhook registration is
 approved.
 
-**Shopify is now fully verified working** (D-031): credentials, app
-install, and Admin API scopes are all resolved. Auth, shop identity, and
-all three reads (793 customers/98 orders/18 products) confirmed live.
-**Nothing is currently blocked on the user for Shopify or Square.**
+**Shopify sync is built and safety-tested, not yet run in full**
+(D-032/D-033): credentials, app install, and Admin API scopes are all
+resolved (D-031). `lib/integrations/shopify/sync.ts` implements
+customer/order/product sync exactly mirroring Square's architecture,
+proven idempotent and non-destructive against 5 real records per
+resource. **The full 793-customer/98-order/18-product sync has not been
+run — this is the one thing waiting on the user's explicit approval.**
+Nothing else is currently blocked.
 
-Next, in order — awaiting the user's explicit go-ahead before this step,
-per D-032 (do not start unprompted):
-1. Apply one migration (`create unique index services_shopify_id_key on
-   services (shopify_product_id) where deleted_at is null and
-   shopify_product_id is not null` — required before an idempotent
-   product sync can run safely), then build
-   `lib/integrations/shopify/sync.ts`: a cursor-paginated GraphQL helper
-   (mirroring Square's `squarePaginate()`), then
-   `syncShopifyCustomers()`/`syncShopifyOrders()`/`syncShopifyProducts()`
-   using the exact matching/upsert/error-handling patterns already
-   proven for Square (D-023/D-029) — customers via
-   `shopify_customer_id` → email → phone → create; orders into
-   `payments` with `provider='shopify'`, skipping (not creating) when no
-   matching customer; products into `services.shopify_product_id`. Full
-   field-by-field mapping is in `docs/DECISIONS.md` D-032. Update the
-   Shopify Dev Dashboard app's App URL from its `example.com` placeholder
-   to the real production URL — **only with the user's explicit
-   approval**, and only that field, not a new app version otherwise.
+Next, in order —
+1. **Awaiting explicit approval**: run `runShopifySync()` with no
+   `limit` for the full 793/98/18 sync, then wire a "Sync now" button in
+   Settings → Integrations for Shopify (same pattern as Square's).
+   Update the Shopify Dev Dashboard app's App URL from its
+   `example.com` placeholder to the real production URL — **only with
+   the user's explicit approval**, and only that field, not a new app
+   version otherwise.
 2. Base44 migration, n8n workflow audit — once credentials/access exist
    for those.
 3. Square and Shopify webhook registration — architecture

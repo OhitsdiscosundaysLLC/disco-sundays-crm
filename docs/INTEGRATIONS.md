@@ -98,17 +98,43 @@ products) all succeed — **793 customers, 98 orders, 18 products**
 (exact counts via Shopify's `customersCount`/`ordersCount`/
 `productsCount` fields). `integrations` table reflects this real state.
 
-**Sync architecture planned, not yet built or run** (D-032, pending the
-user's explicit approval): `customers.shopify_customer_id` and the
-`payments` idempotency index already cover Shopify with zero schema
-changes needed. `services.shopify_product_id` has **no unique index**
-yet — one is required before a safe, idempotent product sync (same
-duplicate-prevention pattern already used for Square, D-012/D-023). No
-`lib/integrations/shopify/sync.ts` exists — customer/order/product
-matching, upsert, and pagination logic all need to be written, following
-the exact architecture already proven for Square
-(`lib/integrations/square/sync.ts`, D-023/D-029). Full mapping detail in
-`docs/DECISIONS.md` D-032.
+**Sync built and safety-tested, full production sync not yet run**
+(D-033): `lib/integrations/shopify/sync.ts` implements the D-032 plan —
+`syncCustomers`/`syncOrders`/`syncProducts`, each cursor-paginated
+(mirroring Square's `squarePaginate()`) and accepting an optional
+`limit` (total records, not page size) for bounded test runs. Applied
+`0016_phase_shopify_sync_idempotency.sql` (unique index on
+`services.shopify_product_id`, checked for pre-existing duplicates
+first — none found) before building.
+
+- **Customers**: `shopify_customer_id` → email → phone → create, same
+  3-tier rule as Square (D-023). Matches never overwrite existing
+  name/email/phone/`source` — only the `shopify_customer_id` link is
+  added.
+- **Orders → `payments`**: `provider='shopify'`,
+  `provider_transaction_id` = order GID, customer resolved via
+  `shopify_customer_id` only (skip, don't create, on no match — the
+  skipped order's name is recorded). `displayFinancialStatus` mapped
+  onto the existing 5-value status enum (`PAID`→`completed`, etc. —
+  full mapping in D-033); cancelled orders always map to `failed`. No
+  raw payment data stored, only Shopify's own order ID/amount/currency/
+  status.
+- **Products → `services`**: matched by `shopify_product_id`; updates
+  only touch `name`/`price`, never `external_square_service_id` or
+  other Square-owned fields.
+
+**Tested** against 5 real records per resource (not the full 793/98/18):
+first run created 1 customer/4 orders/5 services and matched 4
+customers to existing Square-sourced people by email; **re-ran
+identically and got `created: 0` everywhere** — proven idempotent, zero
+duplicates (verified via direct row-count comparison), zero corruption
+of the 1,376 existing Square-linked customers, 158 Square payments, or
+66 Square services (all unchanged). One order correctly skipped for
+having no matching customer in the sample.
+
+**The full 793-customer/98-order/18-product sync has not been run** —
+awaiting explicit approval. No "Sync now" button is wired for Shopify
+yet (unlike Square's), so there is no one-click path to trigger it.
 
 The app's placeholder App URL (`https://example.com`) should be updated
 to the real production URL — production is now live at

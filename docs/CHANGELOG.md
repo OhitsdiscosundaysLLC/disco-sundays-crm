@@ -3,6 +3,38 @@
 All notable changes to the Disco Sundays CRM project are recorded here,
 newest first.
 
+## Claude Code handoff continuation — Shopify sync built and safety-tested — 2026-09-25 (fifth pass)
+
+- **Migration applied** (`0016_phase_shopify_sync_idempotency.sql`):
+  unique index on `services.shopify_product_id`. Checked for existing
+  duplicates first (none found among 66 services) before applying, per
+  explicit instruction to stop and report rather than force it if
+  duplicates existed.
+- **Built `lib/integrations/shopify/sync.ts`** (D-033), implementing the
+  D-032 architecture plan: cursor-paginated customer/order/product sync,
+  each accepting an optional `limit` for bounded test runs. Customers
+  match `shopify_customer_id` → email → phone → create (same rule and
+  race-condition hardening as Square, D-023) without overwriting
+  existing name/email/phone/`source` on a match. Orders map into
+  `payments` (`provider='shopify'`), skipping — not creating — when no
+  customer match exists, with the skipped order's name recorded.
+  Shopify's `displayFinancialStatus` mapped onto the existing 5-value
+  `payments.status` enum. Products map into `services`, updating only
+  `name`/`price` and never touching Square-owned fields.
+- **Safety-tested against 5 real records per resource** (not the full
+  793/98/18 sync): first run created 1 customer/4 orders/5 services and
+  matched 4 people to existing Square-sourced customers by email;
+  **re-ran identically and got zero new creates** — idempotency proven,
+  zero duplicates (row counts identical before/after the second run),
+  zero corruption of the 1,376 existing Square-linked customers, 158
+  Square payments, or 66 Square services (all unchanged, confirmed by
+  direct query). One order correctly skipped for having no matching
+  customer.
+- `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean.
+- **The full production sync (793 customers/98 orders/18 products) was
+  not run** — per explicit instruction, waiting for approval. No
+  "Sync now" UI button was wired for Shopify in this pass.
+
 ## Claude Code handoff continuation — Shopify fully verified, sync architecture planned — 2026-09-25 (fourth pass)
 
 - **Shopify integration fully verified working end-to-end** (D-031)

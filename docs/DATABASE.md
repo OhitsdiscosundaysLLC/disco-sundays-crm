@@ -267,6 +267,14 @@ mechanism required by spec §13/§14/§35.
   `0012_phase_square_sync_idempotency.sql` — missing from the original
   Phase 3 migration, needed so the Square sync (D-023) can re-run without
   creating duplicate refund rows.
+- `services.shopify_product_id` gained a partial unique index in
+  `0016_phase_shopify_sync_idempotency.sql` (`services_shopify_id_key`,
+  same pattern as `services_square_id_key`) — checked for existing
+  duplicate non-null values first (none found) before applying. Needed
+  so the Shopify product sync (D-032/D-033) can re-run without creating
+  duplicate service rows. `customers.shopify_customer_id` and
+  `payments`'s `(provider, provider_transaction_id)` index already
+  covered Shopify with no changes needed.
 
 ## Customer matching / duplicate prevention (spec §33)
 

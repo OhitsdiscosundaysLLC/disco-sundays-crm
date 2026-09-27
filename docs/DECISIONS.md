@@ -726,6 +726,88 @@ migration or the first real sync run.
 
 ---
 
+## D-033: Shopify sync built and safety-tested — full production sync not yet run
+
+**Context**: with D-032's architecture plan approved, this implements it,
+per explicit instruction not to run the full 793/98/18 sync yet.
+
+**Migration applied (Phase 1)**: before touching schema, checked for
+existing duplicate non-null `services.shopify_product_id` values —
+none found (0 of 66 services had one set). Applied
+`0016_phase_shopify_sync_idempotency.sql`:
+`create unique index services_shopify_id_key on services
+(shopify_product_id) where deleted_at is null and shopify_product_id is
+not null` — same pattern as `services_square_id_key`. Verified via
+`pg_indexes` afterward. No other schema changes.
+
+**Sync module built** (`lib/integrations/shopify/sync.ts`), mirroring
+Square's proven architecture (D-023/D-029) field-for-field:
+- **Customers**: matched `shopify_customer_id` → email (citext) → phone
+  → create new, identical 3-tier rule and race-condition/duplicate-email
+  hardening as Square's `matchOrCreateCustomer`. On an email/phone match,
+  only `shopify_customer_id` is set — existing name/email/phone/`source`
+  are never overwritten, preserving whichever provider originally created
+  the record.
+- **Orders → payments**: `provider='shopify'`,
+  `provider_transaction_id` = the order's Shopify GID (idempotency via
+  the existing `payments_provider_transaction_key` index — already
+  covered Shopify, no migration needed). Customer resolved via
+  `shopify_customer_id` only (no email/phone fallback, matching Square's
+  `syncPayments` posture exactly); no match → **skipped, not created**,
+  with the order's human-readable name (`#DS1003` etc.) recorded in the
+  sync summary for visibility. `displayFinancialStatus` mapped onto the
+  existing 5-value `payments.status` check constraint: `PAID`→
+  `completed`, `PENDING`/`AUTHORIZED`→`pending`, `VOIDED`/`EXPIRED`→
+  `failed`, `REFUNDED`→`refunded`, `PARTIALLY_REFUNDED`→
+  `partially_refunded`; `PARTIALLY_PAID` has no exact match in the enum
+  and maps to `pending`; any cancelled order (`cancelledAt` set) maps to
+  `failed` regardless of financial status. No raw payment/card data is
+  ever read or stored — only Shopify's own order ID, amount, currency,
+  and status.
+- **Products → services**: matched by `shopify_product_id` (the new
+  unique index). On update, only `name` and `price` are touched —
+  `external_square_service_id`, `duration_minutes`, `active`, `category`,
+  and `internal_notes` are never overwritten, so a service that happens
+  to exist from Square sync is never at risk (in practice the two
+  provider IDs are independent namespaces and never collide on the same
+  row unless created by that same provider's sync).
+- Every sync function takes an optional `limit` (total records, not page
+  size) — passing a small number runs a bounded, safe test against real
+  data without importing everything; omitting it runs the full resource.
+  This is the "dry-run mode" the instructions asked about — there is no
+  separate no-write dry-run, but a `limit`-bounded real run against a
+  handful of records serves the same safety purpose while still proving
+  the code against live data rather than mocks.
+
+**Testing performed (Phase 3, `limit: 5` on each resource — not the full
+793/98/18 sync)**:
+1. `npx tsc --noEmit`, `npm run lint`, `npm run build` — all clean.
+2. First run: 1 customer created, 4 matched to existing Square-sourced
+   customers by email (now linked to both providers), 4 orders created,
+   1 skipped for no customer match (`#DS1003` — its customer wasn't in
+   this 5-record customer sample, expected), 5 services created.
+3. **Re-ran the identical test** to prove idempotency: second run
+   produced `created: 0` on every resource — 5 matched customers,
+   4 updated orders, 5 updated services, same 1 skip. Row counts in the
+   database were byte-for-byte identical before and after the second
+   run, confirmed via direct query — no duplicates.
+4. Confirmed via direct query that all pre-existing Square data is
+   untouched: 1,376 Square-linked customers, 158 Square payments, and
+   66 Square services all unchanged in count. The 4 dual-linked
+   customers retain `source = 'square'` and their original `email`/
+   `display_name` — only `shopify_customer_id` was added.
+5. `services_shopify_id_key` confirmed present via `pg_indexes`.
+
+**Result of this test run**: 5 real Shopify customers, 4 real orders
+(as payments), and 5 real products (as services) now exist in the CRM —
+this is intentionally a small, real, non-destructive proof, not the full
+793/98/18 sync. No "Sync now" UI button was wired for Shopify in this
+pass (unlike Square's), so there is no one-click path to trigger the
+full sync — running it (via the same `runShopifySync()` with no `limit`)
+requires an explicit next action, only after this report is reviewed.
+
+---
+
 ## Open questions for the user (not decided unilaterally)
 
 These affect money, existing integrations, or things that can't be safely
@@ -748,9 +830,12 @@ inferred, per RULE 6 — flagged rather than guessed:
 5. ~~**Shopify credentials, app installation, and API scopes**~~ — all
    resolved 2026-09-25. Auth, shop verification, and all three reads
    (customers/orders/products) confirmed working live against the real
-   store: 793 customers, 98 orders, 18 products (D-031). No sync code
-   exists yet — architecture planned in D-032, awaiting the user's
-   explicit approval before the first real sync runs.
+   store: 793 customers, 98 orders, 18 products (D-031). Sync module
+   built and safety-tested against 5 real records per resource, proven
+   idempotent with zero duplicates and zero corruption of existing
+   Square data (D-032, D-033). **The full 793/98/18 sync has not been
+   run** — waiting for the user's explicit approval before running
+   `runShopifySync()` with no `limit`.
 6. ~~**Vercel target**~~ — resolved 2026-09-25: the user created the
    project and connected the repo; Claude Code fixed the Root Directory
    (was unset, causing every request to 404) and the two `NEXT_PUBLIC_*`

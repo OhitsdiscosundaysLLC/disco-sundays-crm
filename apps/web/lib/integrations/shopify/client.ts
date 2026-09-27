@@ -59,7 +59,7 @@ async function getAccessToken(creds: ShopifyCredentials): Promise<string> {
   return tokenCache.accessToken;
 }
 
-type ShopifyGraphQLError = { message: string; path?: string[]; extensions?: { code?: string } };
+export type ShopifyGraphQLError = { message: string; path?: string[]; extensions?: { code?: string } };
 
 /**
  * Returns data + errors rather than throwing on any error — a field-level
@@ -67,11 +67,13 @@ type ShopifyGraphQLError = { message: string; path?: string[]; extensions?: { co
  * and collapsing that into a single thrown error would hide that shop
  * access works while customers/orders/products don't (see D-030: this
  * exact distinction mattered for diagnosing a real scopes issue). Only
- * throws for actual transport failures (non-2xx HTTP).
+ * throws for actual transport failures (non-2xx HTTP). Exported for reuse
+ * by the sync module (D-032) — same pattern as Square's `squareFetch`.
  */
-async function shopifyGraphQL<T>(
+export async function shopifyGraphQL<T>(
   creds: ShopifyCredentials,
-  query: string
+  query: string,
+  variables?: Record<string, unknown>
 ): Promise<{ data: T | null; errors: ShopifyGraphQLError[] }> {
   const accessToken = await getAccessToken(creds);
   const res = await fetch(`https://${creds.storeDomain}/admin/api/${creds.apiVersion}/graphql.json`, {
@@ -80,7 +82,7 @@ async function shopifyGraphQL<T>(
       "X-Shopify-Access-Token": accessToken,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, variables }),
   });
 
   if (!res.ok) {
