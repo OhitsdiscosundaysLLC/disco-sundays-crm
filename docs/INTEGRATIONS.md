@@ -98,8 +98,9 @@ products) all succeed — **793 customers, 98 orders, 18 products**
 (exact counts via Shopify's `customersCount`/`ordersCount`/
 `productsCount` fields). `integrations` table reflects this real state.
 
-**Sync built and safety-tested, full production sync not yet run**
-(D-033): `lib/integrations/shopify/sync.ts` implements the D-032 plan —
+**Sync built, safety-tested, and run to completion against all real
+data** (D-033/D-034): `lib/integrations/shopify/sync.ts` implements the
+D-032 plan —
 `syncCustomers`/`syncOrders`/`syncProducts`, each cursor-paginated
 (mirroring Square's `squarePaginate()`) and accepting an optional
 `limit` (total records, not page size) for bounded test runs. Applied
@@ -123,18 +124,27 @@ first — none found) before building.
   only touch `name`/`price`, never `external_square_service_id` or
   other Square-owned fields.
 
-**Tested** against 5 real records per resource (not the full 793/98/18):
-first run created 1 customer/4 orders/5 services and matched 4
-customers to existing Square-sourced people by email; **re-ran
-identically and got `created: 0` everywhere** — proven idempotent, zero
-duplicates (verified via direct row-count comparison), zero corruption
-of the 1,376 existing Square-linked customers, 158 Square payments, or
-66 Square services (all unchanged). One order correctly skipped for
-having no matching customer in the sample.
+**Tested first** against 5 real records per resource, proven idempotent
+(re-ran identically, zero new creates the second time) with zero
+corruption of Square data — see D-033.
 
-**The full 793-customer/98-order/18-product sync has not been run** —
-awaiting explicit approval. No "Sync now" button is wired for Shopify
-yet (unlike Square's), so there is no one-click path to trigger it.
+**Full production sync run 2026-09-25 (D-034), approved by the user**:
+all 793 customers, 98 orders, and 18 products processed.
+- Customers: 100 created, 688 matched/linked to existing CRM customers
+  by email or phone, 0 failed.
+- Orders: 89 payments created, 7 skipped for having no customer on the
+  Shopify order (guest checkout — expected), 0 failed.
+- Products: 13 services created, 0 failed.
+- Verified directly against the database afterward: zero duplicate
+  Shopify customer/order/product IDs; the 1,376 Square-linked customers,
+  158 Square payments, and 66 Square services are all completely
+  unchanged; 690 customers now correctly carry both a Shopify and a
+  Square ID.
+
+No "Sync now" UI button is wired for Shopify yet — re-running the sync
+(safe by construction; the unique indexes plus match-before-insert logic
+prevent duplicates regardless) currently requires the same script-based
+invocation used for this run.
 
 The app's placeholder App URL (`https://example.com`) should be updated
 to the real production URL — production is now live at

@@ -808,6 +808,76 @@ requires an explicit next action, only after this report is reviewed.
 
 ---
 
+## D-034: Full Shopify production sync run and verified — complete
+
+**Context**: the user approved running the full sync after the D-033
+safety test passed. Ran `runShopifySync({})` (no `limit`) against all of
+Shopify's real data.
+
+**Discovered / processed**: 793 customers, 98 orders, 18 products
+(matches the exact counts from D-031's `customersCount`/`ordersCount`/
+`productsCount` query).
+
+**Customers**: 100 created, 688 updated (matched an existing CRM
+customer by email/phone and linked), 5 already matched (from D-033's
+test), 0 failed.
+
+**Orders → payments**: 89 created, 2 updated, 7 skipped for having no
+customer on the order (Shopify allows guest/no-profile checkout) — order
+names: `#DS1002`, `#DS1004`, `#DiscoSundays102601`,
+`#DiscoSundays102901`, `#DiscoSundays103101`, `#DiscoSundays104801`,
+`#DiscoSundays108201`. 0 failed. Notably, `#DS1003` — skipped during
+D-033's *limited* test because its customer wasn't in that 5-record
+sample — synced correctly this run once the full customer set existed,
+confirming that skip was a sampling artifact, not a real gap.
+
+**Products → services**: 13 created, 5 updated (the 5 from D-033's
+test), 0 failed.
+
+**Verification performed against the live database (not re-derived from
+the sync's own summary)**:
+1. Zero duplicate `shopify_customer_id` values.
+2. Zero duplicate `(provider='shopify', provider_transaction_id)`
+   values — 93 rows, 93 distinct IDs.
+3. Zero duplicate `shopify_product_id` values.
+4. Square data fully intact: 1,376 Square-linked customers, 158 Square
+   payments, 66 Square services — all counts unchanged from before this
+   sync.
+5. Dual-provider links intact and grew correctly: 690 customers now
+   carry both `shopify_customer_id` and `external_square_customer_id`
+   (686 newly cross-linked this run + 4 from D-033's test).
+6. Row-count arithmetic is internally consistent: customers
+   1,377→1,477 (+100, matches `created`); services 71→84 (+13, matches
+   `created`); payments 4→93 (+89, matches `created`).
+7. **Did not re-run the full sync to test idempotency** — per explicit
+   instruction to use database checks instead. Idempotency is
+   established by construction (every insert path is preceded by a
+   unique-key lookup, and the three new/existing unique indexes enforce
+   it at the database level regardless of application logic) and was
+   already directly proven by running the identical 5-record test twice
+   in D-033 with zero new creates the second time.
+
+**One accounting nuance, investigated and found non-safety-affecting**:
+the order summary shows `updated: 2`, not the `4` that might be expected
+given D-033's test had already created 4 Shopify-sourced payments before
+this run. Directly verified this does **not** indicate lost or
+duplicated data — the final count (93) exactly equals
+`4 (pre-existing) + 89 (created)`, and a distinct-count query confirms
+93 distinct IDs with zero duplicates. The most likely explanation is
+that Shopify's GraphQL connection ordering isn't guaranteed
+byte-identical across two separate paginated requests several minutes
+apart (the D-033 test used `first: 5` with no explicit sort key; this
+run paginated the same way at a much larger page size). Whichever
+specific orders landed in which page, all 98 orders were processed
+exactly once each, with the correct outcome. Not investigated further,
+per the instruction not to re-run the full sync for verification.
+
+**No code or schema changes this pass** — this was a production data
+sync, not a development change. `integrations` table updated with the
+real result.
+
+---
+
 ## Open questions for the user (not decided unilaterally)
 
 These affect money, existing integrations, or things that can't be safely

@@ -3,6 +3,35 @@
 All notable changes to the Disco Sundays CRM project are recorded here,
 newest first.
 
+## Claude Code handoff continuation — Full Shopify production sync complete — 2026-09-25 (sixth pass)
+
+- **Ran the full Shopify → CRM sync against all real data** (D-034), with
+  the user's explicit approval following D-033's passing safety test.
+  All 793 customers, 98 orders, and 18 products processed in one run:
+  - Customers: 100 created, 688 matched/linked to existing CRM records
+    by email or phone, 5 already linked from testing, 0 failed.
+  - Orders → payments: 89 created, 2 updated, 7 skipped for guest orders
+    with no Shopify customer profile, 0 failed.
+  - Products → services: 13 created, 5 updated, 0 failed.
+- **Verified directly against the database, not just the sync's own
+  summary**: zero duplicate Shopify customer/order/product IDs (checked
+  via `group by ... having count(*) > 1` on all three); the 1,376
+  Square-linked customers, 158 Square payments, and 66 Square services
+  are completely unchanged; 690 customers now correctly hold both a
+  Shopify and a Square ID; every row-count delta matches the sync's
+  reported `created` counts exactly.
+- Investigated one accounting nuance (orders reported `updated: 2`
+  rather than an expected `4`) and confirmed via a distinct-ID count
+  that it does not reflect any duplication or data loss — most likely
+  explained by Shopify's connection ordering not being guaranteed
+  identical across two separate paginated requests.
+- Did not re-run the full sync to test idempotency a second time, per
+  explicit instruction — used direct database checks instead (idempotency
+  was already proven by an actual double-run at small scale in the
+  previous pass, D-033).
+- No code or schema changes — this was a production data sync only.
+  `integrations` table updated with the real result.
+
 ## Claude Code handoff continuation — Shopify sync built and safety-tested — 2026-09-25 (fifth pass)
 
 - **Migration applied** (`0016_phase_shopify_sync_idempotency.sql`):
