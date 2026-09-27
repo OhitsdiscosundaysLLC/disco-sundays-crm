@@ -640,6 +640,92 @@ generic failure.
 
 ---
 
+## D-031: Shopify scopes approved — auth, shop, and all three reads confirmed working live
+
+**Context**: the user approved the updated permissions request in the
+Shopify admin, resolving D-030's `ACCESS_DENIED` blocker.
+**Verified live against the real production store** (each capability
+queried separately, per D-030's fix — no single-query masking):
+- Authentication: token exchange succeeds.
+- Shop verification: resolves to `"Disco Sundays"` /
+  `disco-sundays.myshopify.com` — the correct store.
+- Customer read: succeeds, real sample data returned.
+- Order read: succeeds, real sample data returned (order names like
+  `#DS1001`).
+- Product read: succeeds, real sample data returned.
+- `missingScopeFields: []` — all three previously-denied scopes now
+  granted.
+- Exact counts via Shopify's `customersCount`/`ordersCount`/
+  `productsCount` GraphQL fields (`precision: EXACT`): **793 customers,
+  98 orders, 18 products.**
+`integrations` table updated to reflect this real, current state.
+**No sync code was built or run this pass** — per the user's explicit
+instruction, this was verification only.
+
+## D-032: Shopify sync architecture — plan, not yet built or approved to run
+
+**Context**: with reads proven working, the user asked for the sync
+architecture to be planned and reported, explicitly *not* implemented or
+run yet.
+**Source-of-truth boundary (unchanged, D-011)**: Shopify stays the
+system of record for its own customers/orders/products; the CRM only
+ever pulls a read-only copy in, the same one-way direction already built
+for Square (D-023). No two-way sync.
+
+**Schema audit — what already exists vs. what a real sync would need**:
+- `customers.shopify_customer_id` — exists, with a partial unique index
+  (`customers_shopify_id_key`, `where deleted_at is null and
+  shopify_customer_id is not null`). **Ready.** Customer matching would
+  follow the exact same 3-tier rule already implemented for Square
+  (D-023): `shopify_customer_id` → email (citext) → phone → create new.
+- `payments` — `provider` check constraint already allows `'shopify'`;
+  the idempotency index `payments_provider_transaction_key` is on
+  `(provider, provider_transaction_id)`, already covering Shopify orders
+  with no schema change. `related_type` already allows `'order'`.
+  **Ready.** An order would map to `provider_transaction_id = ` the
+  order's Shopify GID, `customer_id` resolved via `shopify_customer_id`
+  (skip — not create — if no match, same posture as Square's
+  `skippedNoCustomer`), `amount`/`currency` from `totalPriceSet`, and
+  `status` mapped from Shopify's `displayFinancialStatus` onto the
+  existing check-constrained values (`PAID`→`completed`,
+  `PENDING`/`AUTHORIZED`→`pending`, `VOIDED`/`EXPIRED`→`failed`,
+  `REFUNDED`→`refunded`, `PARTIALLY_REFUNDED`→`partially_refunded`;
+  `PARTIALLY_PAID` has no exact equivalent in our 5-value enum — proposed
+  to map to `pending` unless the user prefers otherwise).
+- `services.shopify_product_id` — **column exists but has no unique
+  index.** Confirmed via direct query of `pg_indexes`: only
+  `services_square_id_key` exists (Square's variation-id index);
+  nothing covers `shopify_product_id`. **A migration is required before
+  a safe, idempotent product sync can run** — without it, re-running the
+  sync would create duplicate service rows for the same Shopify product,
+  exactly the bug class D-012/D-023 already fixed for Square. Proposed:
+  `create unique index services_shopify_id_key on public.services
+  (shopify_product_id) where deleted_at is null and shopify_product_id
+  is not null;` — same pattern as the existing Square index, no data
+  changes.
+- No other schema gaps found. `webhook_events.provider` already allows
+  `'shopify'` (Phase 3), unused until webhook registration is approved
+  separately.
+
+**Code gap**: `lib/integrations/shopify/client.ts` only exchanges a
+token and runs single-page verification queries (`first: 3`) — there is
+no pagination helper, no matching/upsert logic, and no `sync.ts` module,
+unlike Square (`lib/integrations/square/sync.ts`, D-023). Building one
+would mean: a cursor-paginated GraphQL helper (`pageInfo.hasNextPage` /
+`after`, mirroring Square's `squarePaginate()`), then
+`syncShopifyCustomers()` / `syncShopifyOrders()` / `syncShopifyProducts()`
+following the exact matching/upsert/error-handling patterns already
+proven for Square, run via the service-role client (payments has no
+authenticated-user insert policy, same reasoning as D-023), wired to a
+"Sync now" button in Settings gated by `settings:edit`.
+
+**Not done, pending approval**: no sync code has been written, no
+migration has been applied, and no production Shopify data has been
+written into the CRM. Waiting for explicit go-ahead before either the
+migration or the first real sync run.
+
+---
+
 ## Open questions for the user (not decided unilaterally)
 
 These affect money, existing integrations, or things that can't be safely
@@ -659,16 +745,12 @@ inferred, per RULE 6 — flagged rather than guessed:
    action requiring explicit approval first).
 4. **Base44 credentials**: still not available. Needed before Phase 8
    (Base44) can move from architecture to live integration.
-5. ~~**Shopify credentials**~~ and ~~**app installation**~~ resolved —
-   fresh Client ID/Secret entered correctly (D-028), app installed on
-   `disco-sundays.myshopify.com` (2026-09-25). **Authentication and shop
-   verification now confirmed working live.** Still blocked on a third,
-   separate issue: **Admin API access scopes aren't granted** — customer/
-   order/product reads all fail `ACCESS_DENIED`. Fix: Dev Dashboard →
-   "Disco Sundays CRM" → Versions → add `read_customers`/`read_orders`/
-   `read_products` to Scopes → save/release → then in the Shopify admin
-   (`disco-sundays.myshopify.com/admin`) → Apps → approve the updated
-   permissions request. See D-030.
+5. ~~**Shopify credentials, app installation, and API scopes**~~ — all
+   resolved 2026-09-25. Auth, shop verification, and all three reads
+   (customers/orders/products) confirmed working live against the real
+   store: 793 customers, 98 orders, 18 products (D-031). No sync code
+   exists yet — architecture planned in D-032, awaiting the user's
+   explicit approval before the first real sync runs.
 6. ~~**Vercel target**~~ — resolved 2026-09-25: the user created the
    project and connected the repo; Claude Code fixed the Root Directory
    (was unset, causing every request to 404) and the two `NEXT_PUBLIC_*`

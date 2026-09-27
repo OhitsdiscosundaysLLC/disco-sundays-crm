@@ -45,7 +45,7 @@ table reflects reality as of the Claude Code continuation.
 | 4 — Projects + Galleries | Schema + full management UI done (create/publish/upload/cover/delete). Public `/gallery/[slug]` + `/embed/gallery/[id]` routes are built but need `SUPABASE_SERVICE_ROLE_KEY` (still not set anywhere — see below) to actually serve content — currently show an honest "not configured" message. Live-verified: customer/gallery/project creation, settings, publish/unpublish all confirmed against production Supabase. File upload and the public password gate itself weren't exercised (no file-picker in this sandbox's browser automation; service key not set) |
 | 6 — Memberships | Done: schema + full CRUD UI (plans, memberships, live-computed usage from bookings). RLS verified via direct database simulation (see Phase 7 row — same method) |
 | 7 — Referrals & Rewards | Done: schema + full UI (referral codes, qualification workflow, append-only reward ledger, idempotent "issue reward" action). RLS verified via direct database simulation — real bug found and fixed same-pass (reward-balance trigger function was directly RPC-callable, revoked). `SUPABASE_SERVICE_ROLE_KEY` configured and verified live via the public gallery routes (first real end-to-end proof they work) |
-| Integrations status | Done: `integrations` table + Settings "Test connection"/"Sync now" UI (spec §34). **Square fully working, all 4 sub-syncs**: connectivity + customers (1,426 matched) + catalog (66 services) + payments (158 synced, $18,105.27) + bookings (9/9 created, catalog sync closed the gap that was skipping all of them) — after fixing `SQUARE_LOCATION_ID` and adding catalog sync (D-020, D-023, D-027, D-029). **Shopify: auth + shop verification now confirmed working** (app installed, D-028) — **blocked on Admin API scopes not being granted** (`ACCESS_DENIED` on customers/orders/products, D-030); not a credential or install problem, a separate manual approval step |
+| Integrations status | Done: `integrations` table + Settings "Test connection"/"Sync now" UI (spec §34). **Square fully working, all 4 sub-syncs**: connectivity + customers (1,426 matched) + catalog (66 services) + payments (158 synced, $18,105.27) + bookings (9/9 created, catalog sync closed the gap that was skipping all of them) — after fixing `SQUARE_LOCATION_ID` and adding catalog sync (D-020, D-023, D-027, D-029). **Shopify: fully verified working** — auth, shop identity, and all three reads (793 customers/98 orders/18 products) confirmed live after credentials + app install + scope approval (D-028, D-030, D-031). Sync module not built yet — architecture planned and reported, awaiting approval to build/run (D-032) |
 | Vercel deploy | Done: production live at `https://disco-sundays-crm.vercel.app` (D-022). Two real bugs found and fixed: Root Directory wasn't set (every request 404'd), and the public Supabase env vars were present but middleware crashed on them |
 | Tasks | Done: schema + full CRUD UI, RLS-verified (D-024) |
 | Reports | Done: `/reports`, real live queries only, no fabricated stats (D-025) |
@@ -427,30 +427,35 @@ verified live, full sync re-run: 158 payments/$18,105.27 synced, zero
 failures. No further Square action needed until webhook registration is
 approved.
 
-Genuinely blocked on the user: **Shopify Admin API scopes aren't
-granted** — not a credential or install problem (both already resolved,
-D-028). Auth and shop access are proven working live. Fix: (1) Dev
-Dashboard → "Disco Sundays CRM" → **Versions** → add `read_customers`,
-`read_orders`, `read_products` to Scopes → save/release; (2) Shopify
-admin (`disco-sundays.myshopify.com/admin`) → Apps → approve the updated
-permissions request (D-030). Nothing else blocks progress.
+**Shopify is now fully verified working** (D-031): credentials, app
+install, and Admin API scopes are all resolved. Auth, shop identity, and
+all three reads (793 customers/98 orders/18 products) confirmed live.
+**Nothing is currently blocked on the user for Shopify or Square.**
 
-Next, in order —
-1. Once scopes are approved: re-run "Test connection" to confirm
-   `missingScopeFields` is empty, then build the Shopify sync adapter
-   (customers → email/phone matching same as Square's D-023 pattern,
-   orders → `payments` with `provider='shopify'`, products →
-   `services.shopify_product_id`, same architecture as Square's D-023/
-   D-029 — none of this exists yet, deliberately not built blind against
-   unreachable data). Update the Shopify Dev Dashboard app's App URL
-   from its `example.com` placeholder to the real production URL —
-   **only with the user's explicit approval**, and only that field, not
-   a new app version otherwise.
+Next, in order — awaiting the user's explicit go-ahead before this step,
+per D-032 (do not start unprompted):
+1. Apply one migration (`create unique index services_shopify_id_key on
+   services (shopify_product_id) where deleted_at is null and
+   shopify_product_id is not null` — required before an idempotent
+   product sync can run safely), then build
+   `lib/integrations/shopify/sync.ts`: a cursor-paginated GraphQL helper
+   (mirroring Square's `squarePaginate()`), then
+   `syncShopifyCustomers()`/`syncShopifyOrders()`/`syncShopifyProducts()`
+   using the exact matching/upsert/error-handling patterns already
+   proven for Square (D-023/D-029) — customers via
+   `shopify_customer_id` → email → phone → create; orders into
+   `payments` with `provider='shopify'`, skipping (not creating) when no
+   matching customer; products into `services.shopify_product_id`. Full
+   field-by-field mapping is in `docs/DECISIONS.md` D-032. Update the
+   Shopify Dev Dashboard app's App URL from its `example.com` placeholder
+   to the real production URL — **only with the user's explicit
+   approval**, and only that field, not a new app version otherwise.
 2. Base44 migration, n8n workflow audit — once credentials/access exist
    for those.
-3. Square webhook registration — architecture (`webhook_events`,
-   signature verification) can be written and unit-tested now, but not
-   registered with the live Square account without explicit approval.
+3. Square and Shopify webhook registration — architecture
+   (`webhook_events`, signature verification) can be written and
+   unit-tested now, but not registered with either live account without
+   explicit approval.
 4. Security hardening pass + end-to-end workflow test per the "Final
    Definition of Done" criteria, once the above are in.
 

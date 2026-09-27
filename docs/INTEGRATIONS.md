@@ -89,25 +89,26 @@ actually provides, updated in both `.env.example` files):
 per the source-of-truth rules above): `read_customers`, `read_orders`,
 `read_products`. No `write_*` scopes requested or needed.
 
-**Status as of 2026-09-25 (D-030)**: credentials correct (D-028), app
-installed on `disco-sundays.myshopify.com` (D-028) — **authentication and
-shop verification are confirmed working live**: token exchange succeeds,
-and `{ shop { name myshopifyDomain } }` correctly resolves to
-`"Disco Sundays"` / `disco-sundays.myshopify.com`. **Still blocked on a
-third issue**: customer/order/product reads all fail
-`ACCESS_DENIED — Access denied for <field> field.` The app's granted
-Admin API scopes don't include `read_customers`/`read_orders`/
-`read_products` yet. Confirmed against Shopify's docs: Access scopes for
-Dev Dashboard apps are set per-version, and scope changes need the
-merchant to separately approve them in the Shopify admin — installing
-the app doesn't grant new scopes on its own. **Exact fix**: (1) Dev
-Dashboard → "Disco Sundays CRM" → **Versions** → add `read_customers`,
-`read_orders`, `read_products` to Scopes → save/release; (2) Shopify
-admin (`disco-sundays.myshopify.com/admin`) → Apps → "Disco Sundays CRM"
-→ approve the updated permissions request. Then re-run "Test connection."
-No customer/order/product sync code has been written yet — that's the
-next step once reads actually work, so it can be tested against real
-data rather than claimed untested.
+**Status as of 2026-09-25 (D-031)**: fully working. Credentials correct
+(D-028), app installed on `disco-sundays.myshopify.com` (D-028), Admin
+API scopes approved in the Shopify admin (D-030→D-031). Verified live:
+authentication, shop identity (`"Disco Sundays"` /
+`disco-sundays.myshopify.com`), and all three reads (customers, orders,
+products) all succeed — **793 customers, 98 orders, 18 products**
+(exact counts via Shopify's `customersCount`/`ordersCount`/
+`productsCount` fields). `integrations` table reflects this real state.
+
+**Sync architecture planned, not yet built or run** (D-032, pending the
+user's explicit approval): `customers.shopify_customer_id` and the
+`payments` idempotency index already cover Shopify with zero schema
+changes needed. `services.shopify_product_id` has **no unique index**
+yet — one is required before a safe, idempotent product sync (same
+duplicate-prevention pattern already used for Square, D-012/D-023). No
+`lib/integrations/shopify/sync.ts` exists — customer/order/product
+matching, upsert, and pagination logic all need to be written, following
+the exact architecture already proven for Square
+(`lib/integrations/square/sync.ts`, D-023/D-029). Full mapping detail in
+`docs/DECISIONS.md` D-032.
 
 The app's placeholder App URL (`https://example.com`) should be updated
 to the real production URL — production is now live at

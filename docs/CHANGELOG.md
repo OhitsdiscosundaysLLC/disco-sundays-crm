@@ -3,6 +3,29 @@
 All notable changes to the Disco Sundays CRM project are recorded here,
 newest first.
 
+## Claude Code handoff continuation — Shopify fully verified, sync architecture planned — 2026-09-25 (fourth pass)
+
+- **Shopify integration fully verified working end-to-end** (D-031)
+  after the user approved the updated permissions request: authentication,
+  shop identity (`"Disco Sundays"`), and all three reads (customers,
+  orders, products) all succeed with `missingScopeFields: []`. Exact
+  counts via Shopify's `customersCount`/`ordersCount`/`productsCount`
+  fields: **793 customers, 98 orders, 18 products.** `integrations`
+  table updated to reflect this real state.
+- **Shopify sync architecture planned and reported, not built or run**
+  (D-032), per the user's explicit instruction not to start a sync yet.
+  Audited the schema directly: `customers.shopify_customer_id` and the
+  `payments` idempotency index already cover Shopify with zero changes;
+  `services.shopify_product_id` has **no unique index** — a migration is
+  needed before a safe product sync (proposed, not applied). No
+  `lib/integrations/shopify/sync.ts` exists yet; full field-by-field
+  mapping plan (customers/orders/products, matching rules, financial
+  status mapping) recorded in `docs/DECISIONS.md` D-032, mirroring
+  Square's proven architecture (D-023/D-029).
+- No code was changed this pass — verification and a schema audit only.
+  `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean
+  (unchanged from the last commit, confirmed anyway).
+
 ## Claude Code handoff continuation — Shopify app installed, auth verified, scopes issue found — 2026-09-25 (third pass)
 
 - **Shopify authentication and shop verification confirmed working
