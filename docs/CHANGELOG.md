@@ -3,6 +3,38 @@
 All notable changes to the Disco Sundays CRM project are recorded here,
 newest first.
 
+## Claude Code handoff continuation — Shopify app installed, auth verified, scopes issue found — 2026-09-25 (third pass)
+
+- **Shopify authentication and shop verification confirmed working
+  live** after the user installed the "Disco Sundays CRM" app on
+  `disco-sundays.myshopify.com` (D-030): token exchange succeeds, and a
+  shop query correctly resolves to `"Disco Sundays"` /
+  `disco-sundays.myshopify.com` — the correct store.
+- **Customer/order/product reads all fail with `ACCESS_DENIED`** — a
+  third, separate, now-diagnosed issue: the app's granted Admin API
+  scopes don't include `read_customers`/`read_orders`/`read_products`
+  yet. Confirmed against Shopify's docs: installing an app and granting
+  it scopes are two different actions — scope changes need separate
+  merchant approval in the Shopify admin. Exact fix identified and
+  reported (Dev Dashboard → Versions → add scopes → Shopify admin →
+  approve).
+- **Real bug found and fixed in `checkShopifyConnection()`** while
+  diagnosing the above: the original combined-query implementation threw
+  on any GraphQL error, but Shopify's root query fields are non-null, so
+  a single denied field nulled the *entire* response — hiding that `shop`
+  actually succeeded. Fixed by querying each capability (shop/customers/
+  orders/products) separately; the check now correctly reports
+  `missingScopeFields` per-field instead of an opaque total failure.
+  `testShopifyConnection()` and the `integrations` table store this
+  precise result.
+- Did not build the Shopify customer/order/payment/product sync module
+  this pass — the user's own instructions were to verify reads work
+  before testing sync/mapping logic against them, and reads don't work
+  yet for a reason outside this codebase (missing scopes). Building and
+  claiming to test a sync path against unreachable data would be an
+  unverified claim.
+- `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean.
+
 ## Claude Code handoff continuation — Square location ID fix verified, Shopify root-caused — 2026-09-25 (second pass)
 
 - **Square `SQUARE_LOCATION_ID` fix confirmed live end-to-end** (D-027).

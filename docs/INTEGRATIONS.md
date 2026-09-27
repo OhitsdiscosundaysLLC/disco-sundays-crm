@@ -89,18 +89,25 @@ actually provides, updated in both `.env.example` files):
 per the source-of-truth rules above): `read_customers`, `read_orders`,
 `read_products`. No `write_*` scopes requested or needed.
 
-**Manual steps remaining**: fresh Client ID/Secret were entered directly
-into `apps/web/.env.local` and Vercel (2026-09-25) — resolved, not from
-the earlier chat paste. All four env vars confirmed present with correct
-names and a valid `*.myshopify.com` store domain. **Live authentication
-still fails** with a real, specific error from Shopify's own OAuth
-endpoint: `app_not_installed — The application is not installed on this
-shop` (D-028). This is not a credential problem — it's that the Dev
-Dashboard app has never been installed on the store. **Exact fix**: Dev
-Dashboard → "Disco Sundays CRM" → Home → scroll down → **Install app** →
-select `disco-sundays.myshopify.com` → **Install**. Confirmed against
-Shopify's current docs (see D-028's link). Re-run "Test connection" in
-Settings → Integrations afterward.
+**Status as of 2026-09-25 (D-030)**: credentials correct (D-028), app
+installed on `disco-sundays.myshopify.com` (D-028) — **authentication and
+shop verification are confirmed working live**: token exchange succeeds,
+and `{ shop { name myshopifyDomain } }` correctly resolves to
+`"Disco Sundays"` / `disco-sundays.myshopify.com`. **Still blocked on a
+third issue**: customer/order/product reads all fail
+`ACCESS_DENIED — Access denied for <field> field.` The app's granted
+Admin API scopes don't include `read_customers`/`read_orders`/
+`read_products` yet. Confirmed against Shopify's docs: Access scopes for
+Dev Dashboard apps are set per-version, and scope changes need the
+merchant to separately approve them in the Shopify admin — installing
+the app doesn't grant new scopes on its own. **Exact fix**: (1) Dev
+Dashboard → "Disco Sundays CRM" → **Versions** → add `read_customers`,
+`read_orders`, `read_products` to Scopes → save/release; (2) Shopify
+admin (`disco-sundays.myshopify.com/admin`) → Apps → "Disco Sundays CRM"
+→ approve the updated permissions request. Then re-run "Test connection."
+No customer/order/product sync code has been written yet — that's the
+next step once reads actually work, so it can be tested against real
+data rather than claimed untested.
 
 The app's placeholder App URL (`https://example.com`) should be updated
 to the real production URL — production is now live at

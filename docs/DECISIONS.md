@@ -576,6 +576,70 @@ recorded in this session's changelog entry for exact counts.
 
 ---
 
+## D-030: Shopify app installed — authentication now works, but Admin API scopes aren't granted
+
+**Context**: the user installed the "Disco Sundays CRM" Dev Dashboard app
+on `disco-sundays.myshopify.com`, resolving D-028's `app_not_installed`
+error. Asked for end-to-end verification of auth, shop access, and
+customer/order/product reads.
+**What was verified, isolating each GraphQL field independently rather
+than trusting the combined query's single error** (the existing
+`checkShopifyConnection()` throws on the first error in a multi-field
+query, which would have hidden that `shop` actually succeeded):
+- **Token exchange (authentication)**: `POST /admin/oauth/access_token`
+  → HTTP 200, real access token issued. **Confirmed working.**
+- **Shop verification**: `{ shop { name myshopifyDomain } }` → HTTP 200,
+  resolved to `name: "Disco Sundays"`,
+  `myshopifyDomain: "disco-sundays.myshopify.com"` — the correct store.
+  **Confirmed working.**
+- **Customers/orders/products reads**: all three independently return
+  HTTP 200 with `"errors": [{"message": "Access denied for X field.",
+  "extensions": {"code": "ACCESS_DENIED"}}]`. **Not a bug, not a retry of
+  D-028** — this is Shopify's Admin API telling us the granted access
+  scopes don't include `read_customers`/`read_orders`/`read_products`.
+**Root cause, confirmed against Shopify's current docs**
+(<https://shopify.dev/docs/apps/build/dev-dashboard/create-apps-using-dev-dashboard>):
+Access scopes for a Dev Dashboard app are set on the app's **Versions**
+page, and — critically — "updates aren't applied automatically to the
+stores your app is installed on. Merchants still need to manually
+approve the new scopes in the Shopify admin." Installing the app (D-028)
+and granting it scopes are two separate steps; only the first has
+happened.
+**Exact manual action required**: (1) Dev Dashboard → "Disco Sundays
+CRM" → Versions → create/edit a version with Scopes including
+`read_customers`, `read_orders`, `read_products` → save/release it as
+current; (2) in the Shopify admin
+(`disco-sundays.myshopify.com/admin`) → Apps → "Disco Sundays CRM" →
+approve the updated permissions request. Claude Code cannot do either
+step — both are actions on the live Shopify account.
+**Decision**: did not build the Shopify customer/order/product sync
+module in this pass. The user's own instructions were to verify reads
+work *before* testing "existing CRM mapping logic" against them — since
+reads currently fail for a reason outside this codebase, writing and
+claiming to have tested a mapping/dedup path against data that can't be
+fetched would be exactly the kind of unverified claim this project has
+consistently avoided. That sync module is real, scoped, ready-to-build
+work for as soon as the scopes are approved — see AH in
+`docs/CLAUDE_CODE_HANDOFF.md`.
+
+**Real bug found and fixed in `checkShopifyConnection()` itself while
+diagnosing this**: the original implementation combined `shop` +
+`customers` + `orders` + `products` into a single GraphQL request and
+threw on any `errors` in the response. Shopify's root `Query` fields are
+non-null, so per GraphQL's null-propagation rules, a single field's
+`ACCESS_DENIED` nulls the *entire* response's `data` — meaning the old
+code would have reported total failure even when `shop` succeeded,
+hiding the far more precise diagnosis above. Confirmed by direct testing:
+a combined query returned `data: null`, while `shop` queried alone
+returned real data. Fixed by issuing `shop`, `customers`, `orders`, and
+`products` as four separate requests and aggregating results, so a
+missing scope on one never masks success on another.
+`testShopifyConnection()` and the `integrations` table now store which
+specific scope fields are missing (`missing_scope_fields`) instead of a
+generic failure.
+
+---
+
 ## Open questions for the user (not decided unilaterally)
 
 These affect money, existing integrations, or things that can't be safely
@@ -595,13 +659,16 @@ inferred, per RULE 6 — flagged rather than guessed:
    action requiring explicit approval first).
 4. **Base44 credentials**: still not available. Needed before Phase 8
    (Base44) can move from architecture to live integration.
-5. ~~**Shopify credentials**~~ — resolved 2026-09-25: fresh Client ID/
-   Secret (not the ones pasted into chat) entered directly into
-   `apps/web/.env.local` and Vercel. All 4 vars verified present, correctly
-   named, valid store-domain format. **Still blocked**, but on a different,
-   diagnosed issue: the Dev Dashboard app isn't installed on the store —
-   see D-028 for the exact manual fix (Dev Dashboard → app → Home →
-   Install app).
+5. ~~**Shopify credentials**~~ and ~~**app installation**~~ resolved —
+   fresh Client ID/Secret entered correctly (D-028), app installed on
+   `disco-sundays.myshopify.com` (2026-09-25). **Authentication and shop
+   verification now confirmed working live.** Still blocked on a third,
+   separate issue: **Admin API access scopes aren't granted** — customer/
+   order/product reads all fail `ACCESS_DENIED`. Fix: Dev Dashboard →
+   "Disco Sundays CRM" → Versions → add `read_customers`/`read_orders`/
+   `read_products` to Scopes → save/release → then in the Shopify admin
+   (`disco-sundays.myshopify.com/admin`) → Apps → approve the updated
+   permissions request. See D-030.
 6. ~~**Vercel target**~~ — resolved 2026-09-25: the user created the
    project and connected the repo; Claude Code fixed the Root Directory
    (was unset, causing every request to 404) and the two `NEXT_PUBLIC_*`

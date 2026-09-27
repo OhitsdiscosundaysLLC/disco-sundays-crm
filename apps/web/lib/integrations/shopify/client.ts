@@ -59,7 +59,20 @@ async function getAccessToken(creds: ShopifyCredentials): Promise<string> {
   return tokenCache.accessToken;
 }
 
-async function shopifyGraphQL<T>(creds: ShopifyCredentials, query: string): Promise<T> {
+type ShopifyGraphQLError = { message: string; path?: string[]; extensions?: { code?: string } };
+
+/**
+ * Returns data + errors rather than throwing on any error — a field-level
+ * ACCESS_DENIED (missing scope) still leaves other fields' data intact,
+ * and collapsing that into a single thrown error would hide that shop
+ * access works while customers/orders/products don't (see D-030: this
+ * exact distinction mattered for diagnosing a real scopes issue). Only
+ * throws for actual transport failures (non-2xx HTTP).
+ */
+async function shopifyGraphQL<T>(
+  creds: ShopifyCredentials,
+  query: string
+): Promise<{ data: T | null; errors: ShopifyGraphQLError[] }> {
   const accessToken = await getAccessToken(creds);
   const res = await fetch(`https://${creds.storeDomain}/admin/api/${creds.apiVersion}/graphql.json`, {
     method: "POST",
@@ -76,10 +89,7 @@ async function shopifyGraphQL<T>(creds: ShopifyCredentials, query: string): Prom
   }
 
   const body = await res.json();
-  if (body.errors) {
-    throw new Error(`Shopify GraphQL errors: ${JSON.stringify(body.errors)}`);
-  }
-  return body.data as T;
+  return { data: (body.data as T | undefined) ?? null, errors: body.errors ?? [] };
 }
 
 type ShopVerifyResult = {
@@ -87,6 +97,8 @@ type ShopVerifyResult = {
   customerSample: string[];
   orderSample: string[];
   productSample: string[];
+  /** GraphQL field names that returned ACCESS_DENIED — i.e. scopes not yet granted. */
+  missingScopeFields: string[];
 };
 
 export type ShopifyConnectionCheck =
@@ -100,6 +112,13 @@ export type ShopifyConnectionCheck =
  * more. Never creates, modifies, or deletes anything in Shopify. Sample
  * data is returned for display only, never written to the CRM database —
  * actual sync is separate, later work.
+ *
+ * Each capability is queried *separately*, not combined into one request.
+ * Shopify's root Query fields (customers/orders/products) are non-null —
+ * per GraphQL's null-propagation rules, a single ACCESS_DENIED on one of
+ * them nulls out the entire response's `data`, which would otherwise hide
+ * that `shop` (and any other granted scope) succeeded. Confirmed by
+ * direct testing against the real API — see docs/DECISIONS.md D-030.
  */
 export async function checkShopifyConnection(): Promise<ShopifyConnectionCheck> {
   const creds = getShopifyCredentials();
@@ -111,27 +130,42 @@ export async function checkShopifyConnection(): Promise<ShopifyConnectionCheck> 
   }
 
   try {
-    const data = await shopifyGraphQL<{
-      shop: { name: string };
-      customers: { edges: { node: { displayName: string } }[] };
-      orders: { edges: { node: { name: string } }[] };
-      products: { edges: { node: { title: string } }[] };
-    }>(
-      creds,
-      `{
-        shop { name }
-        customers(first: 3) { edges { node { displayName } } }
-        orders(first: 3) { edges { node { name } } }
-        products(first: 3) { edges { node { title } } }
-      }`
-    );
+    const shopResult = await shopifyGraphQL<{ shop: { name: string } | null }>(creds, `{ shop { name } }`);
+    if (!shopResult.data?.shop) {
+      const detail = shopResult.errors
+        .map((e) => `${e.path?.join(".") ?? "?"}: ${e.extensions?.code ?? e.message}`)
+        .join("; ");
+      return { ok: false, error: detail || "Shopify request returned no shop data." };
+    }
+
+    const [customersResult, ordersResult, productsResult] = await Promise.all([
+      shopifyGraphQL<{ customers: { edges: { node: { displayName: string } }[] } }>(
+        creds,
+        `{ customers(first: 3) { edges { node { displayName } } } }`
+      ),
+      shopifyGraphQL<{ orders: { edges: { node: { name: string } }[] } }>(
+        creds,
+        `{ orders(first: 3) { edges { node { name } } } }`
+      ),
+      shopifyGraphQL<{ products: { edges: { node: { title: string } }[] } }>(
+        creds,
+        `{ products(first: 3) { edges { node { title } } } }`
+      ),
+    ]);
+
+    const missingScopeFields = [
+      customersResult.errors.some((e) => e.extensions?.code === "ACCESS_DENIED") ? "customers" : null,
+      ordersResult.errors.some((e) => e.extensions?.code === "ACCESS_DENIED") ? "orders" : null,
+      productsResult.errors.some((e) => e.extensions?.code === "ACCESS_DENIED") ? "products" : null,
+    ].filter((f): f is string => Boolean(f));
 
     return {
       ok: true,
-      shopName: data.shop.name,
-      customerSample: data.customers.edges.map((e) => e.node.displayName),
-      orderSample: data.orders.edges.map((e) => e.node.name),
-      productSample: data.products.edges.map((e) => e.node.title),
+      shopName: shopResult.data.shop.name,
+      customerSample: customersResult.data?.customers.edges.map((e) => e.node.displayName) ?? [],
+      orderSample: ordersResult.data?.orders.edges.map((e) => e.node.name) ?? [],
+      productSample: productsResult.data?.products.edges.map((e) => e.node.title) ?? [],
+      missingScopeFields,
     };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Request failed." };

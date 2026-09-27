@@ -100,7 +100,7 @@ export async function testShopifyConnection() {
   const supabase = await createClient();
   const now = new Date().toISOString();
 
-  if (result.ok) {
+  if (result.ok && result.missingScopeFields.length === 0) {
     await supabase
       .from("integrations")
       .update({
@@ -112,6 +112,22 @@ export async function testShopifyConnection() {
           customer_sample: result.customerSample,
           order_sample: result.orderSample,
           product_sample: result.productSample,
+        },
+      })
+      .eq("provider", "shopify");
+  } else if (result.ok) {
+    // Auth + shop access work, but one or more scopes aren't granted yet —
+    // report this precisely rather than a generic failure (see D-030).
+    await supabase
+      .from("integrations")
+      .update({
+        status: "error",
+        last_checked_at: now,
+        connected_at: now,
+        metadata: {
+          shop_name: result.shopName,
+          error: `Authenticated, but missing scopes for: ${result.missingScopeFields.join(", ")}. Approve updated permissions in the Shopify admin.`,
+          missing_scope_fields: result.missingScopeFields,
         },
       })
       .eq("provider", "shopify");
