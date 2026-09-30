@@ -49,6 +49,190 @@ export type Database = {
           },
         ]
       }
+      audio_approvals: {
+        Row: {
+          approved_at: string
+          audio_version_id: string
+          created_at: string
+          customer_id: string
+          id: string
+        }
+        Insert: {
+          approved_at?: string
+          audio_version_id: string
+          created_at?: string
+          customer_id: string
+          id?: string
+        }
+        Update: {
+          approved_at?: string
+          audio_version_id?: string
+          created_at?: string
+          customer_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audio_approvals_audio_version_id_fkey"
+            columns: ["audio_version_id"]
+            isOneToOne: false
+            referencedRelation: "audio_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audio_approvals_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audio_comments: {
+        Row: {
+          audio_version_id: string
+          author_customer_id: string | null
+          author_profile_id: string | null
+          author_type: string
+          comment: string
+          created_at: string
+          id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          timestamp_seconds: number
+        }
+        Insert: {
+          audio_version_id: string
+          author_customer_id?: string | null
+          author_profile_id?: string | null
+          author_type: string
+          comment: string
+          created_at?: string
+          id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          timestamp_seconds: number
+        }
+        Update: {
+          audio_version_id?: string
+          author_customer_id?: string | null
+          author_profile_id?: string | null
+          author_type?: string
+          comment?: string
+          created_at?: string
+          id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          timestamp_seconds?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audio_comments_audio_version_id_fkey"
+            columns: ["audio_version_id"]
+            isOneToOne: false
+            referencedRelation: "audio_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audio_comments_author_customer_id_fkey"
+            columns: ["author_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audio_comments_author_profile_id_fkey"
+            columns: ["author_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audio_comments_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audio_versions: {
+        Row: {
+          asset_id: string
+          created_at: string
+          deleted_at: string | null
+          duration_seconds: number | null
+          id: string
+          notes: string | null
+          project_id: string
+          song_id: string | null
+          status: string
+          updated_at: string
+          uploaded_by: string | null
+          version_label: string
+        }
+        Insert: {
+          asset_id: string
+          created_at?: string
+          deleted_at?: string | null
+          duration_seconds?: number | null
+          id?: string
+          notes?: string | null
+          project_id: string
+          song_id?: string | null
+          status?: string
+          updated_at?: string
+          uploaded_by?: string | null
+          version_label: string
+        }
+        Update: {
+          asset_id?: string
+          created_at?: string
+          deleted_at?: string | null
+          duration_seconds?: number | null
+          id?: string
+          notes?: string | null
+          project_id?: string
+          song_id?: string | null
+          status?: string
+          updated_at?: string
+          uploaded_by?: string | null
+          version_label?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audio_versions_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: true
+            referencedRelation: "project_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audio_versions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audio_versions_song_id_fkey"
+            columns: ["song_id"]
+            isOneToOne: false
+            referencedRelation: "project_songs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audio_versions_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
@@ -352,6 +536,129 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      delivery_link_versions: {
+        Row: {
+          audio_version_id: string
+          delivery_link_id: string
+        }
+        Insert: {
+          audio_version_id: string
+          delivery_link_id: string
+        }
+        Update: {
+          audio_version_id?: string
+          delivery_link_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_link_versions_audio_version_id_fkey"
+            columns: ["audio_version_id"]
+            isOneToOne: false
+            referencedRelation: "audio_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_link_versions_delivery_link_id_fkey"
+            columns: ["delivery_link_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_links"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      delivery_link_views: {
+        Row: {
+          delivery_link_id: string
+          id: string
+          viewed_at: string
+        }
+        Insert: {
+          delivery_link_id: string
+          id?: string
+          viewed_at?: string
+        }
+        Update: {
+          delivery_link_id?: string
+          id?: string
+          viewed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_link_views_delivery_link_id_fkey"
+            columns: ["delivery_link_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_links"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      delivery_links: {
+        Row: {
+          allow_downloads: boolean
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          expires_at: string | null
+          id: string
+          password_hash: string | null
+          project_id: string
+          slug: string
+          song_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          allow_downloads?: boolean
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          expires_at?: string | null
+          id?: string
+          password_hash?: string | null
+          project_id: string
+          slug: string
+          song_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          allow_downloads?: boolean
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          expires_at?: string | null
+          id?: string
+          password_hash?: string | null
+          project_id?: string
+          slug?: string
+          song_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_links_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_links_song_id_fkey"
+            columns: ["song_id"]
+            isOneToOne: false
+            referencedRelation: "project_songs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       galleries: {
         Row: {
@@ -919,6 +1226,70 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      project_assets: {
+        Row: {
+          asset_type: string
+          created_at: string
+          deleted_at: string | null
+          file_name: string
+          id: string
+          mime_type: string | null
+          project_id: string
+          size_bytes: number | null
+          song_id: string | null
+          storage_path: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          asset_type: string
+          created_at?: string
+          deleted_at?: string | null
+          file_name: string
+          id?: string
+          mime_type?: string | null
+          project_id: string
+          size_bytes?: number | null
+          song_id?: string | null
+          storage_path: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          asset_type?: string
+          created_at?: string
+          deleted_at?: string | null
+          file_name?: string
+          id?: string
+          mime_type?: string | null
+          project_id?: string
+          size_bytes?: number | null
+          song_id?: string | null
+          storage_path?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_assets_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_assets_song_id_fkey"
+            columns: ["song_id"]
+            isOneToOne: false
+            referencedRelation: "project_songs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_assets_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       project_deliveries: {
         Row: {

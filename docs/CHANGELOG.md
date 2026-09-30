@@ -64,6 +64,53 @@ newest first.
   not run** — per explicit instruction, waiting for approval. No
   "Sync now" UI button was wired for Shopify in this pass.
 
+## Claude Code handoff continuation — Studio operating system expansion, Phase B: Audio Delivery + Feedback — 2026-09-30
+
+- **Phase B — Audio Delivery + Feedback, complete**: `0018_phase_b_audio_delivery.sql`.
+  Before writing any code, inspected the existing Galleries implementation,
+  Storage bucket policies, and customer access patterns as required — this
+  CRM has no customer login yet, so the design reuses the exact gallery
+  password + HMAC-signed-cookie pattern for the "authorized customer"
+  concept instead of building new customer auth (see D-036).
+- New tables: `project_assets` (rough mix/master/stems/instrumental/
+  acapella/WAV/MP3/ZIP/artwork/lyrics/document/other), `audio_versions`
+  (version label + Draft→…→Delivered lifecycle, wraps one asset),
+  `audio_comments` (timestamped feedback, staff- or customer-authored),
+  `audio_approvals` (**append-only** — no update/delete policy for any
+  role, matching the `reward_transactions` ledger pattern), `delivery_links`
+  + `delivery_link_versions` + `delivery_link_views` (secure password-
+  gated customer links, the audio-specific counterpart to Phase A's
+  simpler `project_deliveries`).
+- New private Storage bucket `project-audio` (own RLS policies gated on
+  `'projects'`, never public) — unreleased music is never reachable
+  without a signed URL, matching the explicit security requirement.
+- Built the staff UI directly on the existing `/projects/[id]` dashboard:
+  audio version upload + lifecycle status control, inline timestamped
+  comment thread with resolve, manual "approval obtained out-of-band"
+  logging, supporting-file upload/download, and delivery-link creation
+  (password, expiry, download permission, multi-version bundling).
+- Built the **client-facing side**: a new public `/deliver/[slug]` route
+  (mirrors `/gallery/[slug]`'s password-gate/signed-URL architecture
+  exactly) with a real custom audio player — play/pause, click-to-seek
+  timeline with comment markers, volume, version switcher, timestamped
+  feedback composer, and a one-click version approval — no third-party
+  player library added.
+- **Security**: customer comment/approval submissions write through the
+  service role only after re-verifying the link's password cookie inside
+  the server action itself (never trusting that the page merely
+  rendered), and independently confirm the submitted audio version is
+  actually bundled into the unlocked link — verified live that a version
+  attached only to one link cannot be targeted through a different link's
+  password, even with a guessed UUID.
+- **Tested live via direct RLS simulation**: staff insert/select/update
+  through real policies; duplicate-approval rejection; approval
+  UPDATE/DELETE both correctly blocked under the authenticated role
+  (immutability actually enforced, not just intended); comment
+  author-type/id check constraint; cascading delete leaving zero
+  orphaned rows; `finance`/`marketing` roles confirmed denied. Zero new
+  security-advisor findings. `npm run typecheck`, `lint`, and `build`
+  all pass clean. All test data cleaned up.
+
 ## Claude Code handoff continuation — Studio operating system expansion, Phase A: Song/Project Pipeline — 2026-09-30
 
 - **Started the large multi-phase studio-OS expansion** (song/project

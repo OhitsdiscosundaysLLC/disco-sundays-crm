@@ -17,7 +17,16 @@ import {
   completeRevision,
   createDelivery,
   updateProjectStage,
+  updateAudioVersionStatus,
+  deleteSupportingAsset,
+  createStaffAudioComment,
+  resolveAudioComment,
+  recordManualApproval,
+  createDeliveryLink,
+  updateDeliveryLinkStatus,
+  archiveDeliveryLink,
 } from "../actions";
+import { AudioVersionUploader, SupportingAssetUploader } from "../audio-uploader";
 
 const STAGE_STYLES: Record<string, string> = {
   inquiry: "bg-neutral-100 text-neutral-600",
@@ -41,6 +50,22 @@ const SONG_SUB_STATUS_OPTIONS = [
   { value: "in_progress", label: "In progress" },
   { value: "complete", label: "Complete" },
 ];
+
+const AUDIO_LIFECYCLE_OPTIONS = [
+  { value: "draft", label: "Draft" },
+  { value: "internal_review", label: "Internal Review" },
+  { value: "client_review", label: "Client Review" },
+  { value: "revision_requested", label: "Revision Requested" },
+  { value: "approved", label: "Approved" },
+  { value: "final", label: "Final" },
+  { value: "delivered", label: "Delivered" },
+];
+
+function bytesLabel(bytes: number | null): string {
+  if (!bytes) return "—";
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const profile = await getCurrentProfile();
@@ -80,6 +105,9 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     { data: stages },
     { data: staff },
     { data: activities },
+    { data: audioVersions },
+    { data: projectAssets },
+    { data: deliveryLinks },
   ] = await Promise.all([
     supabase
       .from("project_songs")
@@ -116,7 +144,49 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       .eq("customer_id", project.customer_id)
       .order("created_at", { ascending: false })
       .limit(20),
+    supabase
+      .from("audio_versions")
+      .select("id, song_id, asset_id, version_label, status, duration_seconds, created_at, project_assets(storage_path, file_name, size_bytes), project_songs(title)")
+      .eq("project_id", id)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("project_assets")
+      .select("id, song_id, asset_type, file_name, storage_path, size_bytes, created_at")
+      .eq("project_id", id)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("delivery_links")
+      .select("id, slug, status, expires_at, allow_downloads, created_at, song_id, project_songs(title)")
+      .eq("project_id", id)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false }),
   ]);
+
+  // A dummy UUID that will never match a real row, used instead of an empty
+  // `.in()` array — Postgrest's `in.()` filter is unreliable on an empty
+  // list, and this keeps every branch of the Promise.all the same
+  // query-builder type (avoids a `never[]` inference mismatch).
+  const NONE_ID = "00000000-0000-0000-0000-000000000000";
+  const audioVersionIds = (audioVersions ?? []).map((v) => v.id);
+  const deliveryLinkIds = (deliveryLinks ?? []).map((l) => l.id);
+  const audioVersionIdsForQuery = audioVersionIds.length > 0 ? audioVersionIds : [NONE_ID];
+  const deliveryLinkIdsForQuery = deliveryLinkIds.length > 0 ? deliveryLinkIds : [NONE_ID];
+
+  const [{ data: audioComments }, { data: audioApprovals }, { data: deliveryLinkVersions }, { data: deliveryLinkViews }] =
+    await Promise.all([
+      supabase
+        .from("audio_comments")
+        .select(
+          "id, audio_version_id, timestamp_seconds, comment, author_type, status, created_at, staff:profiles!author_profile_id(display_name, email), customer:customers!author_customer_id(display_name, email)"
+        )
+        .in("audio_version_id", audioVersionIdsForQuery)
+        .order("timestamp_seconds", { ascending: true }),
+      supabase.from("audio_approvals").select("id, audio_version_id, customer_id, approved_at").in("audio_version_id", audioVersionIdsForQuery),
+      supabase.from("delivery_link_versions").select("delivery_link_id, audio_version_id").in("delivery_link_id", deliveryLinkIdsForQuery),
+      supabase.from("delivery_link_views").select("delivery_link_id").in("delivery_link_id", deliveryLinkIdsForQuery),
+    ]);
 
   const customer = project.customers as { id: string; display_name: string | null; email: string | null; phone: string | null } | null;
   const manager = project.project_manager as { display_name: string | null; email: string | null } | null;
@@ -128,6 +198,48 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   const balance = project.estimated_revenue !== null ? Math.max(project.estimated_revenue - actualRevenue, 0) : null;
 
   const songOptions = (songs ?? []).map((s) => ({ value: s.id, label: s.title }));
+
+  // Staff already have 'projects':'view' under storage RLS for the
+  // project-audio bucket, so signed URLs are generated with the caller's
+  // own authenticated session — no service role needed here.
+  const audioVersionAssetIds = new Set((audioVersions ?? []).map((v) => v.asset_id));
+  const supportingAssets = (projectAssets ?? []).filter((a) => !audioVersionAssetIds.has(a.id));
+
+  const [audioVersionsWithUrls, supportingAssetsWithUrls] = await Promise.all([
+    Promise.all(
+      (audioVersions ?? []).map(async (v) => {
+        const asset = v.project_assets as { storage_path: string; file_name: string; size_bytes: number | null } | null;
+        const url = asset
+          ? (await supabase.storage.from("project-audio").createSignedUrl(asset.storage_path, 3600)).data?.signedUrl ?? null
+          : null;
+        return { ...v, asset, url };
+      })
+    ),
+    Promise.all(
+      supportingAssets.map(async (a) => {
+        const url = (await supabase.storage.from("project-audio").createSignedUrl(a.storage_path, 3600)).data?.signedUrl ?? null;
+        return { ...a, url };
+      })
+    ),
+  ]);
+
+  const commentsByVersion = new Map<string, NonNullable<typeof audioComments>>();
+  for (const c of audioComments ?? []) {
+    const list = commentsByVersion.get(c.audio_version_id) ?? [];
+    list.push(c);
+    commentsByVersion.set(c.audio_version_id, list);
+  }
+
+  const approvalByVersion = new Map((audioApprovals ?? []).map((a) => [a.audio_version_id, a]));
+
+  const versionCountByLink = new Map<string, number>();
+  for (const jv of deliveryLinkVersions ?? []) {
+    versionCountByLink.set(jv.delivery_link_id, (versionCountByLink.get(jv.delivery_link_id) ?? 0) + 1);
+  }
+  const viewCountByLink = new Map<string, number>();
+  for (const v of deliveryLinkViews ?? []) {
+    viewCountByLink.set(v.delivery_link_id, (viewCountByLink.get(v.delivery_link_id) ?? 0) + 1);
+  }
 
   return (
     <div className="space-y-8">
@@ -441,6 +553,251 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             <input name="notes" placeholder="Notes (optional)" className="col-span-2 rounded-md border border-neutral-300 px-2 py-1.5 text-sm" />
             <SubmitButton pendingLabel="Recording…" className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-800">
               Record delivery
+            </SubmitButton>
+          </form>
+        ) : null}
+      </section>
+
+      {/* Audio versions */}
+      <section className="rounded-lg border border-neutral-200 p-4">
+        <h2 className="text-sm font-medium text-neutral-900">Audio versions</h2>
+        {audioVersionsWithUrls.length === 0 ? (
+          <p className="mt-2 text-sm text-neutral-500">No audio uploaded yet.</p>
+        ) : (
+          <ul className="mt-3 space-y-4">
+            {audioVersionsWithUrls.map((v) => {
+              const song = v.project_songs as { title: string } | null;
+              const versionComments = commentsByVersion.get(v.id) ?? [];
+              const approval = approvalByVersion.get(v.id);
+              return (
+                <li key={v.id} className="rounded-md border border-neutral-100 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-neutral-900">
+                        {v.version_label} {song ? `— ${song.title}` : ""}
+                      </p>
+                      <p className="text-xs text-neutral-500">
+                        {v.asset?.file_name} · {bytesLabel(v.asset?.size_bytes ?? null)} · {formatDateTime(v.created_at)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {approval ? (
+                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                          Approved {formatDate(approval.approved_at)}
+                        </span>
+                      ) : null}
+                      {canEdit ? (
+                        <AutoSubmitSelect
+                          action={updateAudioVersionStatus.bind(null, v.id, project.id)}
+                          name="value"
+                          defaultValue={v.status}
+                          options={AUDIO_LIFECYCLE_OPTIONS}
+                        />
+                      ) : (
+                        <span className="text-xs text-neutral-600">{v.status.replace(/_/g, " ")}</span>
+                      )}
+                      {v.url ? (
+                        <a href={v.url} target="_blank" rel="noreferrer" className="text-xs text-neutral-500 underline hover:text-neutral-900">
+                          Play / download
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {v.url ? <audio src={v.url} controls className="mt-2 w-full" /> : null}
+
+                  <div className="mt-3">
+                    {versionComments.length === 0 ? (
+                      <p className="text-xs text-neutral-400">No feedback on this version yet.</p>
+                    ) : (
+                      <ul className="space-y-1.5">
+                        {versionComments.map((c) => {
+                          const staffAuthor = c.staff as { display_name: string | null; email: string | null } | null;
+                          const customerAuthor = c.customer as { display_name: string | null; email: string | null } | null;
+                          const authorLabel =
+                            c.author_type === "staff"
+                              ? staffAuthor?.display_name || staffAuthor?.email || "Staff"
+                              : customerAuthor?.display_name || customerAuthor?.email || "Customer";
+                          const mm = Math.floor(c.timestamp_seconds / 60);
+                          const ss = Math.floor(c.timestamp_seconds % 60).toString().padStart(2, "0");
+                          return (
+                            <li key={c.id} className="flex items-start justify-between gap-2 text-xs">
+                              <div>
+                                <span className="mr-1.5 rounded bg-neutral-100 px-1 py-0.5 font-mono text-neutral-600">
+                                  {mm}:{ss}
+                                </span>
+                                <span className="text-neutral-700">{c.comment}</span>
+                                <span className="ml-1.5 text-neutral-400">
+                                  — {authorLabel} {c.status === "resolved" ? "· resolved" : ""}
+                                </span>
+                              </div>
+                              {canEdit && c.status !== "resolved" ? (
+                                <form action={resolveAudioComment.bind(null, c.id, project.id)}>
+                                  <SubmitButton pendingLabel="…" className="shrink-0 text-neutral-400 hover:text-green-700">
+                                    Resolve
+                                  </SubmitButton>
+                                </form>
+                              ) : null}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                    {canEdit ? (
+                      <form action={createStaffAudioComment} className="mt-2 flex gap-2">
+                        <input type="hidden" name="project_id" value={project.id} />
+                        <input type="hidden" name="audio_version_id" value={v.id} />
+                        <input name="timestamp_seconds" type="number" step="1" placeholder="0" className="w-16 rounded-md border border-neutral-300 px-2 py-1 text-xs" />
+                        <input name="comment" placeholder="Internal note or reply…" className="flex-1 rounded-md border border-neutral-300 px-2 py-1 text-xs" />
+                        <SubmitButton pendingLabel="…" className="rounded-md border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50">
+                          Add
+                        </SubmitButton>
+                      </form>
+                    ) : null}
+                    {canEdit && !approval && customer ? (
+                      <form action={recordManualApproval} className="mt-2">
+                        <input type="hidden" name="project_id" value={project.id} />
+                        <input type="hidden" name="audio_version_id" value={v.id} />
+                        <input type="hidden" name="customer_id" value={customer.id} />
+                        <SubmitButton pendingLabel="…" className="text-xs text-neutral-500 hover:text-green-700">
+                          Log approval obtained out-of-band
+                        </SubmitButton>
+                      </form>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {canCreate ? (
+          <div className="mt-4">
+            <AudioVersionUploader projectId={project.id} songOptions={songOptions} />
+          </div>
+        ) : null}
+      </section>
+
+      {/* Supporting files */}
+      <section className="rounded-lg border border-neutral-200 p-4">
+        <h2 className="text-sm font-medium text-neutral-900">Supporting files</h2>
+        <p className="mt-1 text-xs text-neutral-500">Artwork, lyrics, documents, and other non-audio project files.</p>
+        {supportingAssetsWithUrls.length === 0 ? (
+          <p className="mt-2 text-sm text-neutral-500">No files uploaded yet.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-neutral-100">
+            {supportingAssetsWithUrls.map((a) => (
+              <li key={a.id} className="flex items-center justify-between py-2 text-sm">
+                <div>
+                  <p className="text-neutral-900">{a.file_name}</p>
+                  <p className="text-xs text-neutral-500">
+                    {a.asset_type.replace(/_/g, " ")} · {bytesLabel(a.size_bytes)} · {formatDateTime(a.created_at)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {a.url ? (
+                    <a href={a.url} target="_blank" rel="noreferrer" className="text-xs text-neutral-500 underline hover:text-neutral-900">
+                      Download
+                    </a>
+                  ) : null}
+                  {canDelete ? (
+                    <form action={deleteSupportingAsset.bind(null, a.id, project.id)}>
+                      <SubmitButton pendingLabel="…" className="text-xs text-neutral-500 hover:text-red-600">
+                        Remove
+                      </SubmitButton>
+                    </form>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {canCreate ? (
+          <div className="mt-4">
+            <SupportingAssetUploader projectId={project.id} songOptions={songOptions} />
+          </div>
+        ) : null}
+      </section>
+
+      {/* Delivery links */}
+      <section className="rounded-lg border border-neutral-200 p-4">
+        <h2 className="text-sm font-medium text-neutral-900">Delivery links</h2>
+        <p className="mt-1 text-xs text-neutral-500">
+          Secure, password-protected links for the customer to play audio, leave feedback, and approve versions.
+        </p>
+        {!deliveryLinks || deliveryLinks.length === 0 ? (
+          <p className="mt-2 text-sm text-neutral-500">No delivery links created yet.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-neutral-100">
+            {deliveryLinks.map((link) => {
+              const song = link.project_songs as { title: string } | null;
+              return (
+                <li key={link.id} className="py-2.5 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="font-mono text-xs text-neutral-900">/deliver/{link.slug}</p>
+                      <p className="text-xs text-neutral-500">
+                        {song ? song.title : "Whole project"} · {versionCountByLink.get(link.id) ?? 0} version(s) ·{" "}
+                        {viewCountByLink.get(link.id) ?? 0} view(s) · expires {link.expires_at ? formatDate(link.expires_at) : "never"} ·{" "}
+                        {link.allow_downloads ? "downloads allowed" : "no downloads"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {canEdit ? (
+                        <AutoSubmitSelect
+                          action={updateDeliveryLinkStatus.bind(null, link.id, project.id)}
+                          name="value"
+                          defaultValue={link.status}
+                          options={AUDIO_LIFECYCLE_OPTIONS}
+                        />
+                      ) : (
+                        <span className="text-xs text-neutral-600">{link.status.replace(/_/g, " ")}</span>
+                      )}
+                      {canDelete ? (
+                        <form action={archiveDeliveryLink.bind(null, link.id, project.id)}>
+                          <SubmitButton pendingLabel="…" className="text-xs text-neutral-500 hover:text-red-600">
+                            Archive
+                          </SubmitButton>
+                        </form>
+                      ) : null}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {canCreate && audioVersionsWithUrls.length > 0 ? (
+          <form action={createDeliveryLink} className="mt-4 space-y-2">
+            <input type="hidden" name="project_id" value={project.id} />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <select name="song_id" className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm">
+                <option value="">Whole project</option>
+                {songOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <input name="password" type="text" placeholder="Password (recommended)" className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm" />
+              <input name="expires_at" type="datetime-local" className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm" />
+              <label className="flex items-center gap-2 text-sm text-neutral-600">
+                <input type="checkbox" name="allow_downloads" className="rounded border-neutral-300" />
+                Allow downloads
+              </label>
+            </div>
+            <div>
+              <p className="mb-1 text-xs text-neutral-500">Include versions:</p>
+              <div className="flex flex-wrap gap-3">
+                {audioVersionsWithUrls.map((v) => (
+                  <label key={v.id} className="flex items-center gap-1.5 text-xs text-neutral-600">
+                    <input type="checkbox" name="version_ids" value={v.id} className="rounded border-neutral-300" />
+                    {v.version_label}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <SubmitButton pendingLabel="Creating…" className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-800">
+              Create delivery link
             </SubmitButton>
           </form>
         ) : null}

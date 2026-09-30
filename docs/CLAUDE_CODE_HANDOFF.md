@@ -442,7 +442,15 @@ Agreements) → H (Business Intelligence) → I (Customer 360) → J (Client
 Portal) → K/L/M (final audits). **Phase A is complete and shipped**
 (`project_stages`/`project_songs`/`project_sessions`/
 `project_revisions`/`project_deliveries`, `/projects/[id]` dashboard).
-Continue with Phase B next — do not skip ahead; each phase ships fully
+**Phase B is complete and shipped** (D-036) —
+`project_assets`/`audio_versions`/`audio_comments`/`audio_approvals`/
+`delivery_links` (+ join/view tables), a private `project-audio` Storage
+bucket, staff upload/lifecycle/comment/approval UI on `/projects/[id]`,
+and a public password-gated `/deliver/[slug]` route with a real custom
+audio player (timeline, comment markers, version switcher, approval).
+Reused the gallery password/signed-cookie pattern rather than building
+customer auth — see D-036 for the full reasoning. Continue with Phase C
+next — do not skip ahead; each phase ships fully
 tested/documented before the next starts, per the user's own
 instructions. The user pre-authorized continuing without per-step
 approval, reserving approval only for: destructive DB changes, deleting

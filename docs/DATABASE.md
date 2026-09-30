@@ -296,6 +296,76 @@ no backfill risk.
   correctly blocks direct authenticated-role writes (service-role only,
   unchanged). Full cleanup verified, zero orphaned rows.
 
+## Phase B — Audio Delivery + Feedback (applied — `0018_phase_b_audio_delivery.sql`)
+
+Builds on Phase A (`project_songs`) and the Phase 4 gallery password/
+signed-URL architecture — see D-036 for the full reasoning. No customer
+login exists yet (Phase J), so "the authorized customer" is established
+the same way a private gallery does: by holding the password to a link
+scoped to one project.
+
+- `project_assets` — generic project file record: rough mix, mix
+  version, master, instrumental, acapella, stems, WAV, MP3, ZIP,
+  artwork, lyrics, document, other. `project_id` + optional `song_id`,
+  `storage_path`/`file_name`/`mime_type`/`size_bytes`, `uploaded_by`.
+  Private storage only.
+- `audio_versions` — wraps one `project_assets` row (`asset_id`, unique)
+  with a human `version_label` and the client-review lifecycle status
+  (`draft`/`internal_review`/`client_review`/`revision_requested`/
+  `approved`/`final`/`delivered`). `duration_seconds` is best-effort,
+  read client-side from the browser `<audio>` element's metadata rather
+  than parsed server-side — avoids an audio-parsing dependency for a
+  value the player already needs anyway. **Old versions are never
+  deleted** — the app only ever transitions `status`, matching the
+  spec's "do not delete old audio versions" requirement.
+- `audio_comments` — timestamped feedback (`timestamp_seconds`,
+  `comment`). `author_type` is `staff` or `customer`, with a check
+  constraint enforcing exactly one of `author_profile_id`/
+  `author_customer_id` is set to match. `status` (open/resolved),
+  `resolved_by`/`resolved_at` for staff triage.
+- `audio_approvals` — **append-only**, same posture as
+  `reward_transactions` (D-008): insert-only, no update or delete policy
+  for any role. Unique index on `audio_version_id` (one approval per
+  version — a new revision gets a new `audio_versions` row and its own
+  approval). `customer_id` uses `ON DELETE RESTRICT`, not
+  cascade/set-null, so an approval can never silently lose its audit
+  trail.
+- `delivery_links` — secure, password-gated customer-facing links: the
+  audio-specific counterpart to Phase A's `project_deliveries` (which
+  stays the simple gallery-based delivery-event log — flagged as coming
+  here in that migration's own comments). `project_id` + optional
+  `song_id`, unique `slug`, `password_hash` (reuses
+  `lib/gallery-password.ts`), the same lifecycle `status` list as
+  `audio_versions`, `expires_at`, `allow_downloads`. `password_hash` is
+  never selected by client code and has no anon RLS policy, same as
+  `galleries` (D-015).
+- `delivery_link_versions` — join table: which `audio_versions` are
+  bundled into a given link (a link can carry multiple versions/songs).
+- `delivery_link_views` — a view counter, written only by the public
+  route via the service role, same pattern as `gallery_views`.
+- **Storage**: new private bucket `project-audio` (not a reuse of
+  `gallery-private` — separate resource-permission domain, own clean
+  `storage.objects` policies gated on `'projects'` instead of
+  `'galleries'`). Never public.
+- RLS: every table gated on the existing `'projects'` permission, same
+  precedent as Phase A — no new `role_permissions` resource.
+- Live-verified via direct RLS simulation (owner role): asset/version/
+  comment insert; approval insert; **duplicate approval for the same
+  version correctly rejected** (unique index); **approval UPDATE and
+  DELETE both correctly blocked** under the `authenticated` role (no
+  policy exists for either — 0 rows affected, row still intact
+  afterward); `audio_comments` author-type/id mismatch correctly
+  rejected by the check constraint; delivery link + bundled version
+  creation; **cross-link isolation confirmed** — a version bundled only
+  into "link A" returns zero matching `delivery_link_versions` rows
+  when queried against "link B", proving a visitor holding one link's
+  password cannot forge feedback/approval against a version never
+  shared with them; cascading delete from the parent project removed
+  every Phase B row with zero orphans. `finance`/`marketing` roles
+  confirmed denied via `has_permission()` (the same function every
+  policy calls). Zero new security-advisor findings. Full cleanup
+  verified.
+
 ## Cross-cutting
 - `tasks` (applied — `0013_phase_tasks.sql`) — `task_statuses` (todo/
   in_progress/done/cancelled, same configurable-status pattern as

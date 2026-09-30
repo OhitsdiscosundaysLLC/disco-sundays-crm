@@ -911,6 +911,76 @@ engineers table; gated every new table on the existing `'projects'`
 permission rather than expanding `role_permissions` for sub-resources
 that are always accessed through a project.
 
+## D-036: Phase B (Audio Delivery + Feedback) shipped — reused the gallery password/signed-URL pattern instead of building customer auth
+
+**Context**: Phase B required a client-facing audio player with
+timestamped feedback and version approval, gated so unreleased music is
+never publicly reachable. This CRM has no customer login system yet
+(Phase J builds a real client portal) — galleries solve the identical
+problem today with a password-gated public slug + HMAC-signed httpOnly
+cookie (`lib/gallery-password.ts` / `lib/gallery-access-token.ts`),
+where "the authorized customer" is established by holding the password
+to a link that's already scoped to one project (and therefore one
+customer), not by a real login session.
+**Decision**: Phase B reuses that exact pattern rather than inventing a
+customer-auth system now. New `lib/delivery-access-token.ts` mirrors
+`gallery-access-token.ts` byte-for-byte (own cookie namespace,
+`delivery_access_*`, so it can never collide with a gallery cookie) —
+deliberately not generalizing the gallery file, to avoid touching a
+working code path for an unrelated feature. `verifyGalleryPassword` /
+`hashGalleryPassword` are reused as-is (scrypt has no gallery-specific
+logic in it).
+**New tables** (`supabase/migrations/0018_phase_b_audio_delivery.sql`):
+`project_assets` (generic file record — rough mix/master/stems/
+instrumental/acapella/WAV/MP3/ZIP/artwork/lyrics/document/other),
+`audio_versions` (wraps one `project_assets` row with a version label +
+the Draft→…→Delivered lifecycle status), `audio_comments` (timestamped
+feedback, `author_type` split staff/customer with a check constraint
+enforcing exactly one author id is set), `audio_approvals` (append-only,
+same posture as `reward_transactions` — insert-only, no update/delete
+policy for any role, `customer_id` uses `ON DELETE RESTRICT` so an
+approval can never silently lose its audit trail), `delivery_links`
+(the audio-specific counterpart to Phase A's `project_deliveries`,
+which stays the simple gallery-based delivery-event log — Phase A's own
+migration comment already flagged this table as coming here) plus its
+`delivery_link_versions` join table and `delivery_link_views` counter.
+**Storage**: a new private `project-audio` bucket rather than reusing
+`gallery-private` — different resource-permission domain (`'projects'`
+vs `'galleries'`), so it gets its own clean `storage.objects` policies
+instead of OR-ing extra conditions into a bucket that's already working
+for gallery photos/video. Never public, matching the spec's "unreleased
+music must not become publicly reachable" requirement.
+**Security**: customer-submitted comments/approvals write through the
+service role from the public `/deliver/[slug]` route (bypasses RLS
+entirely, same as `gallery_views` inserts) only after re-verifying the
+link's password cookie server-side inside the action itself — never
+trusting that the page merely rendered. Each action additionally checks
+that the submitted `audio_version_id` is actually bundled into the
+`delivery_link_id` the visitor unlocked (via `delivery_link_versions`),
+so a visitor who has one project's link password cannot forge feedback
+or an approval against a version that was never shared with them, even
+if they guessed its UUID. Verified live via direct RLS simulation: a
+version attached only to "link A" returns zero matching
+`delivery_link_versions` rows when queried against "link B"'s id.
+**Verified live**: staff insert/select/update through real RLS policies
+(owner role); `finance`/`marketing` roles confirmed denied by
+`has_permission()` (same function the policies call); duplicate
+approval for one version rejected by the unique index; `audio_approvals`
+UPDATE and DELETE both correctly blocked under the `authenticated` role
+(0 rows affected, no update/delete policy exists); `audio_comments`
+author-type/id mismatch rejected by the check constraint; cascade
+delete from a project cleanly removed every Phase B sub-resource with
+zero orphaned rows. Zero new Supabase security-advisor findings (same
+three pre-existing, unrelated ones as before). `npm run typecheck`,
+`npm run lint`, and `npm run build` all pass clean, including the new
+`/deliver/[slug]` route. All test data cleaned up after verification.
+**Not verified in this pass**: the actual browser cookie round-trip
+(no live customer session available in this environment) and real
+file upload through a browser — the underlying primitives (scrypt
+hash/verify, HMAC sign/verify) are the exact same, unmodified functions
+already proven live by the working gallery feature, just under a new
+cookie namespace.
+
 ---
 
 ## Open questions for the user (not decided unilaterally)

@@ -1,11 +1,13 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/permissions";
 import { logActivity } from "@/lib/activities";
+import { hashGalleryPassword } from "@/lib/gallery-password";
 
 export type FormState = { error: string | null };
 
@@ -398,6 +400,342 @@ export async function createDelivery(formData: FormData) {
       title: `Delivery recorded for "${projectInfo.name}"`,
     });
   }
+
+  revalidatePath(`/projects/${projectId}`);
+}
+
+// ---------------------------------------------------------------------
+// Phase B — Audio assets, versions, comments, approvals, delivery links.
+// Files are already uploaded direct-to-storage by the client before
+// these actions run (same pattern as gallery-uploader.tsx) — these
+// actions only record the resulting storage_path in the database.
+// ---------------------------------------------------------------------
+
+const AUDIO_VERSION_STATUSES = [
+  "draft",
+  "internal_review",
+  "client_review",
+  "revision_requested",
+  "approved",
+  "final",
+  "delivered",
+] as const;
+
+export async function createAudioVersion(formData: FormData) {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/login");
+
+  const allowed = await hasPermission(profile.role, "projects", "create");
+  if (!allowed) return;
+
+  const projectId = str(formData, "project_id");
+  const storagePath = str(formData, "storage_path");
+  const fileName = str(formData, "file_name");
+  const assetType = str(formData, "asset_type");
+  const versionLabel = str(formData, "version_label");
+  if (!projectId || !storagePath || !fileName || !assetType || !versionLabel) return;
+
+  const supabase = await createClient();
+  const songId = str(formData, "song_id");
+
+  const { data: asset, error: assetError } = await supabase
+    .from("project_assets")
+    .insert({
+      project_id: projectId,
+      song_id: songId,
+      asset_type: assetType,
+      storage_path: storagePath,
+      file_name: fileName,
+      mime_type: str(formData, "mime_type"),
+      size_bytes: num(formData, "size_bytes"),
+      uploaded_by: profile.id,
+    })
+    .select("id")
+    .single();
+
+  if (assetError || !asset) {
+    console.error("createAudioVersion: project_assets insert failed", assetError);
+    return;
+  }
+
+  const { error: versionError, data: version } = await supabase
+    .from("audio_versions")
+    .insert({
+      project_id: projectId,
+      song_id: songId,
+      asset_id: asset.id,
+      version_label: versionLabel,
+      duration_seconds: num(formData, "duration_seconds"),
+      uploaded_by: profile.id,
+    })
+    .select("project_id, projects(customer_id, name)")
+    .single();
+
+  if (versionError) {
+    console.error("createAudioVersion: audio_versions insert failed", versionError);
+    revalidatePath(`/projects/${projectId}`);
+    return;
+  }
+
+  const projectInfo = version?.projects as { customer_id: string; name: string } | null;
+  if (projectInfo) {
+    await logActivity(supabase, {
+      customerId: projectInfo.customer_id,
+      type: "project.audio_version_uploaded",
+      title: `New audio version "${versionLabel}" uploaded for "${projectInfo.name}"`,
+    });
+  }
+
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function updateAudioVersionStatus(versionId: string, projectId: string, formData: FormData) {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/login");
+
+  const allowed = await hasPermission(profile.role, "projects", "edit");
+  if (!allowed) return;
+
+  const status = formData.get("value");
+  if (typeof status !== "string" || !(AUDIO_VERSION_STATUSES as readonly string[]).includes(status)) return;
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("audio_versions").update({ status }).eq("id", versionId);
+
+  if (error) console.error("updateAudioVersionStatus failed", error);
+
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function createSupportingAsset(formData: FormData) {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/login");
+
+  const allowed = await hasPermission(profile.role, "projects", "create");
+  if (!allowed) return;
+
+  const projectId = str(formData, "project_id");
+  const storagePath = str(formData, "storage_path");
+  const fileName = str(formData, "file_name");
+  const assetType = str(formData, "asset_type");
+  if (!projectId || !storagePath || !fileName || !assetType) return;
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("project_assets").insert({
+    project_id: projectId,
+    song_id: str(formData, "song_id"),
+    asset_type: assetType,
+    storage_path: storagePath,
+    file_name: fileName,
+    mime_type: str(formData, "mime_type"),
+    size_bytes: num(formData, "size_bytes"),
+    uploaded_by: profile.id,
+  });
+
+  if (error) console.error("createSupportingAsset failed", error);
+
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function deleteSupportingAsset(assetId: string, projectId: string) {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/login");
+
+  const allowed = await hasPermission(profile.role, "projects", "delete");
+  if (!allowed) return;
+
+  const supabase = await createClient();
+  // Only ever targets assets with no audio_versions row (enforced in the UI
+  // by only rendering delete on the "supporting files" list) — audio
+  // versions themselves are never deleted, only status-transitioned.
+  const { error } = await supabase
+    .from("project_assets")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", assetId);
+
+  if (error) console.error("deleteSupportingAsset failed", error);
+
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function createStaffAudioComment(formData: FormData) {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/login");
+
+  const allowed = await hasPermission(profile.role, "projects", "edit");
+  if (!allowed) return;
+
+  const projectId = str(formData, "project_id");
+  const audioVersionId = str(formData, "audio_version_id");
+  const comment = str(formData, "comment");
+  const timestampSeconds = num(formData, "timestamp_seconds") ?? 0;
+  if (!projectId || !audioVersionId || !comment) return;
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("audio_comments").insert({
+    audio_version_id: audioVersionId,
+    timestamp_seconds: timestampSeconds,
+    comment,
+    author_type: "staff",
+    author_profile_id: profile.id,
+  });
+
+  if (error) console.error("createStaffAudioComment failed", error);
+
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function resolveAudioComment(commentId: string, projectId: string) {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/login");
+
+  const allowed = await hasPermission(profile.role, "projects", "edit");
+  if (!allowed) return;
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("audio_comments")
+    .update({ status: "resolved", resolved_by: profile.id, resolved_at: new Date().toISOString() })
+    .eq("id", commentId);
+
+  if (error) console.error("resolveAudioComment failed", error);
+
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function recordManualApproval(formData: FormData) {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/login");
+
+  const allowed = await hasPermission(profile.role, "projects", "edit");
+  if (!allowed) return;
+
+  const projectId = str(formData, "project_id");
+  const audioVersionId = str(formData, "audio_version_id");
+  const customerId = str(formData, "customer_id");
+  if (!projectId || !audioVersionId || !customerId) return;
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("audio_approvals").insert({
+    audio_version_id: audioVersionId,
+    customer_id: customerId,
+  });
+
+  if (error) {
+    console.error("recordManualApproval failed", error);
+    revalidatePath(`/projects/${projectId}`);
+    return;
+  }
+
+  await supabase.from("audio_versions").update({ status: "approved" }).eq("id", audioVersionId);
+
+  await logActivity(supabase, {
+    customerId,
+    type: "project.audio_version_approved",
+    title: "Audio version approved (logged by staff)",
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+}
+
+// ---------------------------------------------------------------------
+// Delivery links
+// ---------------------------------------------------------------------
+
+function generateDeliverySlug(): string {
+  return `dl-${randomBytes(4).toString("hex")}`;
+}
+
+export async function createDeliveryLink(formData: FormData) {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/login");
+
+  const allowed = await hasPermission(profile.role, "projects", "create");
+  if (!allowed) return;
+
+  const projectId = str(formData, "project_id");
+  if (!projectId) return;
+
+  const password = str(formData, "password");
+  const expiresAt = str(formData, "expires_at");
+  const allowDownloads = formData.get("allow_downloads") === "on";
+  const versionIds = formData.getAll("version_ids").filter((v): v is string => typeof v === "string" && v.length > 0);
+
+  const supabase = await createClient();
+
+  let linkId: string | null = null;
+  for (let attempt = 0; attempt < 3 && !linkId; attempt++) {
+    const slug = generateDeliverySlug();
+    const { data, error } = await supabase
+      .from("delivery_links")
+      .insert({
+        project_id: projectId,
+        song_id: str(formData, "song_id"),
+        slug,
+        password_hash: password ? hashGalleryPassword(password) : null,
+        expires_at: expiresAt,
+        allow_downloads: allowDownloads,
+        created_by: profile.id,
+      })
+      .select("id")
+      .single();
+
+    if (!error && data) linkId = data.id;
+    else if (error && error.code !== "23505") {
+      console.error("createDeliveryLink failed", error);
+      revalidatePath(`/projects/${projectId}`);
+      return;
+    }
+  }
+
+  if (!linkId) {
+    console.error("createDeliveryLink: could not generate a unique slug");
+    revalidatePath(`/projects/${projectId}`);
+    return;
+  }
+
+  if (versionIds.length > 0) {
+    const { error: joinError } = await supabase
+      .from("delivery_link_versions")
+      .insert(versionIds.map((audio_version_id) => ({ delivery_link_id: linkId!, audio_version_id })));
+    if (joinError) console.error("createDeliveryLink: attaching versions failed", joinError);
+  }
+
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function updateDeliveryLinkStatus(linkId: string, projectId: string, formData: FormData) {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/login");
+
+  const allowed = await hasPermission(profile.role, "projects", "edit");
+  if (!allowed) return;
+
+  const status = formData.get("value");
+  if (typeof status !== "string" || !(AUDIO_VERSION_STATUSES as readonly string[]).includes(status)) return;
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("delivery_links").update({ status }).eq("id", linkId);
+
+  if (error) console.error("updateDeliveryLinkStatus failed", error);
+
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function archiveDeliveryLink(linkId: string, projectId: string) {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/login");
+
+  const allowed = await hasPermission(profile.role, "projects", "delete");
+  if (!allowed) return;
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("delivery_links")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", linkId);
+
+  if (error) console.error("archiveDeliveryLink failed", error);
 
   revalidatePath(`/projects/${projectId}`);
 }
