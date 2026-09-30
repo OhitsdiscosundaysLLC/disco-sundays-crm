@@ -20,11 +20,13 @@ export default async function EditProjectPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: project }, { data: customers }, { data: services }, { data: statuses }] =
+  const [{ data: project }, { data: customers }, { data: services }, { data: statuses }, { data: stages }, { data: staff }] =
     await Promise.all([
       supabase
         .from("projects")
-        .select("id, customer_id, service_id, name, status, start_date, due_date, completion_date, notes")
+        .select(
+          "id, customer_id, service_id, name, project_type, artist_name, description, status, stage, priority, project_manager_id, primary_engineer_id, estimated_revenue, start_date, due_date, completion_date, notes"
+        )
         .eq("id", id)
         .is("deleted_at", null)
         .single(),
@@ -36,6 +38,8 @@ export default async function EditProjectPage({
         .limit(200),
       supabase.from("services").select("id, name").is("deleted_at", null).order("name"),
       supabase.from("project_statuses").select("slug, label").order("sort_order"),
+      supabase.from("project_stages").select("slug, label").order("sort_order"),
+      supabase.from("profiles").select("id, display_name, email").order("display_name"),
     ]);
 
   if (!project) notFound();
@@ -49,6 +53,8 @@ export default async function EditProjectPage({
         customerOptions={(customers ?? []).map((c) => ({ value: c.id, label: customerLabel(c) }))}
         serviceOptions={(services ?? []).map((s) => ({ value: s.id, label: s.name }))}
         statusOptions={(statuses ?? []).map((s) => ({ value: s.slug, label: s.label }))}
+        stageOptions={(stages ?? []).map((s) => ({ value: s.slug, label: s.label }))}
+        staffOptions={(staff ?? []).map((p) => ({ value: p.id, label: p.display_name || p.email || p.id }))}
         defaults={project}
       />
     </div>

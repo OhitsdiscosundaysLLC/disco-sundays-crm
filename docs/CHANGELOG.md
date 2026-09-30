@@ -64,6 +64,50 @@ newest first.
   not run** — per explicit instruction, waiting for approval. No
   "Sync now" UI button was wired for Shopify in this pass.
 
+## Claude Code handoff continuation — Studio operating system expansion, Phase A: Song/Project Pipeline — 2026-09-30
+
+- **Started the large multi-phase studio-OS expansion** (song/project
+  pipeline, audio delivery, real membership tracking, engineer
+  management, automation/rebooking, showcase events, deposits/
+  agreements, BI dashboard, Customer 360, client portal). Given the
+  genuine scope, executing and shipping one phase at a time rather than
+  one giant migration, per explicit instruction.
+- **Phase A — Song/Project Pipeline, complete**: `0017_phase_a_project_pipeline.sql`
+  (additive, zero existing project rows so no data-migration risk).
+  `projects` gained project_type/artist_name/description/stage/
+  project_manager/primary_engineer/estimated_revenue/priority. New:
+  `project_stages` (14-stage workflow), `project_songs` (with 4
+  independent production sub-statuses), `project_sessions` (links to
+  real bookings/engineers), `project_revisions`, `project_deliveries`
+  (reuses the existing gallery system for files rather than duplicating
+  it). Actual revenue/balance are computed live from linked `payments`
+  rows, never stored — same principle already established for this
+  table.
+- Built the real UI: extended project create/edit forms, and a genuinely
+  new **project detail dashboard** (`/projects/[id]`) showing stage
+  (with inline transition control), financials, songs (with inline
+  per-song sub-status controls), sessions, revisions, deliveries, and
+  the customer's activity timeline — all wired to real inline add
+  forms, not placeholders.
+- Found and fixed two real bugs while building this: (1) `onChange`
+  handlers can't be attached directly to elements rendered by a Server
+  Component — extracted a small `AutoSubmitSelect` Client Component
+  wrapper; (2) the status-update server actions were being called with
+  positional string arguments via `.bind()`, but form actions always
+  receive a trailing `FormData`, not the bound value — fixed the action
+  signatures to read the new value out of `FormData` instead.
+- **Tested via direct RLS simulation** (owner role, no browser session
+  available this pass): project creation with every new field, stage
+  transition, song creation, **duplicate track_number correctly
+  rejected** by the new unique index, session creation + status update,
+  revision creation, **duplicate revision_number correctly rejected**,
+  delivery recording, and a payment linked via `related_type='project'`
+  correctly computing into the dashboard's actual-revenue figure —
+  while confirming `payments` still correctly blocks direct
+  authenticated writes (unchanged, service-role only). Full cleanup
+  verified, zero orphaned rows.
+- `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean.
+
 ## Claude Code handoff continuation — Shopify fully verified, sync architecture planned — 2026-09-25 (fourth pass)
 
 - **Shopify integration fully verified working end-to-end** (D-031)

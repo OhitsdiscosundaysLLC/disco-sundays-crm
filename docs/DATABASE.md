@@ -246,6 +246,56 @@ mechanism required by spec §13/§14/§35.
   `apply_reward_transaction()`) fires on every `activities` insert and
   creates a task per any active matching rule. See D-026.
 
+## Phase A — Song/Project Pipeline (applied — `0017_phase_a_project_pipeline.sql`)
+
+Turns the Phase 4 `projects` table into a real studio production workflow.
+Zero existing project rows at the time of this migration — fully additive,
+no backfill risk.
+
+- `project_stages` — 14-value configurable stage list (Inquiry through
+  Cancelled/Completed), same pattern as `booking_statuses`. Kept
+  **separate** from the existing `status`/`project_statuses` (untouched,
+  for backward compatibility) — the spec names both `status` and `stage`
+  as distinct project fields.
+- `projects` gained: `project_type` (single/EP/album/.../other, check-
+  constrained), `artist_name`, `description`, `stage` (FK to
+  `project_stages`), `project_manager_id`/`primary_engineer_id` (both FK
+  to `profiles` — `engineer` is already a profiles role, no new
+  "engineers" table), `estimated_revenue` (a real entered quote figure),
+  `priority`. **`actual_revenue`/`balance` are deliberately not stored
+  columns** — computed live from `payments` where `related_type='project'`
+  and `related_id=projects.id` (that constraint already allowed
+  `'project'` since Phase 3), matching this table's pre-existing
+  "revenue is derived, never hand-maintained" principle. A full deposit
+  lifecycle (required/pending/paid/refunded/forfeited) is deliberately
+  deferred to its own table in a later phase rather than bolted on as a
+  premature column here.
+- `project_songs` — title, track_number (unique per project, partial
+  index), status, genre, bpm, song_key, four independent sub-statuses
+  (recording/editing/mixing/mastering), final_approval.
+- `project_sessions` — project_id/song_id nullable (so it can also back
+  general engineer scheduling later without a second table), booking_id
+  (links to a real Square-sourced booking where applicable), engineer_id,
+  session_type, starts_at/ends_at (duration computed, not stored, to
+  avoid drift), status.
+- `project_revisions` — a revision *round* tracker (revision_number
+  unique per project+song). Coarser than Phase B's planned fine-grained
+  timestamped audio feedback.
+- `project_deliveries` — records the delivery *event*; reuses the
+  existing gallery system (Phase 4) for actual file storage rather than
+  duplicating it, via an optional `gallery_id`.
+- RLS: every new table gated on the existing `'projects'` permission
+  (view/create/edit/delete) — no new `role_permissions` resource, since
+  these are all accessed through a project, not standalone.
+- Live-verified via direct RLS simulation (owner role): project creation
+  with every new field, stage transition, song creation with duplicate
+  track_number correctly rejected by the unique index, session creation +
+  status update, revision creation with duplicate revision_number
+  correctly rejected, delivery recording, and a linked payment correctly
+  computing into actual revenue — while confirming `payments` still
+  correctly blocks direct authenticated-role writes (service-role only,
+  unchanged). Full cleanup verified, zero orphaned rows.
+
 ## Cross-cutting
 - `tasks` (applied — `0013_phase_tasks.sql`) — `task_statuses` (todo/
   in_progress/done/cancelled, same configurable-status pattern as

@@ -878,6 +878,41 @@ real result.
 
 ---
 
+## D-035: Studio operating system expansion — Phase A (Song/Project Pipeline) shipped
+
+**Context**: the user requested a large, multi-phase expansion (Phases
+A–M: project pipeline, audio delivery, membership tracking, engineer
+management, automation/rebooking, showcase events, deposits/agreements,
+BI dashboard, Customer 360, client portal) turning the CRM into a full
+studio operating system, explicitly authorizing continuous autonomous
+work through all phases without per-step approval (reserving approval
+only for destructive changes, new Shopify/Square write scopes, webhook
+registration, paid services, and real customer messaging).
+**Decision on pacing**: given the genuine size of this spec — this is
+weeks of real engineering, not a single-session task — phases are being
+built and shipped one at a time, each fully tested/documented/committed/
+deployed before the next starts, exactly as the instructions require
+("do not build everything in one uncontrolled migration"). Phase A
+(Song/Project Pipeline) is complete; see D-036 (if a further phase lands
+in the same pass) or the CHANGELOG for what's shipped so far. Each future
+phase gets its own decision entry rather than retrofitting this one.
+**Key design calls made while scoping Phase A** (full detail in
+`docs/DATABASE.md`'s Phase A section): kept the spec's "status" and
+"stage" as two genuinely separate fields rather than trying to merge or
+replace the existing `project_statuses`; did not store `actual_revenue`/
+`balance`/`deposit_amount` as columns, computing revenue live from
+`payments` instead and deferring a real deposit lifecycle to its own
+table in a later phase (Phase G, per the spec's own phase ordering) —
+storing those as hand-typed columns now would have created exactly the
+kind of drift-prone, fake-looking field the spec explicitly warns
+against ("never use fake data to make a feature appear complete"); reused
+the existing `engineer` profiles role rather than inventing a parallel
+engineers table; gated every new table on the existing `'projects'`
+permission rather than expanding `role_permissions` for sub-resources
+that are always accessed through a project.
+
+---
+
 ## Open questions for the user (not decided unilaterally)
 
 These affect money, existing integrations, or things that can't be safely

@@ -920,6 +920,61 @@ export type Database = {
         }
         Relationships: []
       }
+      project_deliveries: {
+        Row: {
+          created_at: string
+          delivered_at: string
+          delivered_by: string | null
+          delivery_type: string
+          gallery_id: string | null
+          id: string
+          notes: string | null
+          project_id: string
+        }
+        Insert: {
+          created_at?: string
+          delivered_at?: string
+          delivered_by?: string | null
+          delivery_type?: string
+          gallery_id?: string | null
+          id?: string
+          notes?: string | null
+          project_id: string
+        }
+        Update: {
+          created_at?: string
+          delivered_at?: string
+          delivered_by?: string | null
+          delivery_type?: string
+          gallery_id?: string | null
+          id?: string
+          notes?: string | null
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_deliveries_delivered_by_fkey"
+            columns: ["delivered_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_deliveries_gallery_id_fkey"
+            columns: ["gallery_id"]
+            isOneToOne: false
+            referencedRelation: "galleries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_deliveries_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_members: {
         Row: {
           created_at: string
@@ -953,6 +1008,229 @@ export type Database = {
           },
         ]
       }
+      project_revisions: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          description: string | null
+          id: string
+          notes: string | null
+          project_id: string
+          requested_at: string
+          revision_number: number
+          song_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          notes?: string | null
+          project_id: string
+          requested_at?: string
+          revision_number: number
+          song_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          notes?: string | null
+          project_id?: string
+          requested_at?: string
+          revision_number?: number
+          song_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_revisions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_revisions_song_id_fkey"
+            columns: ["song_id"]
+            isOneToOne: false
+            referencedRelation: "project_songs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_sessions: {
+        Row: {
+          booking_id: string | null
+          created_at: string
+          deleted_at: string | null
+          ends_at: string | null
+          engineer_id: string | null
+          id: string
+          notes: string | null
+          project_id: string | null
+          session_type: string
+          song_id: string | null
+          starts_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          booking_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          ends_at?: string | null
+          engineer_id?: string | null
+          id?: string
+          notes?: string | null
+          project_id?: string | null
+          session_type?: string
+          song_id?: string | null
+          starts_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          booking_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          ends_at?: string | null
+          engineer_id?: string | null
+          id?: string
+          notes?: string | null
+          project_id?: string | null
+          session_type?: string
+          song_id?: string | null
+          starts_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_sessions_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_sessions_engineer_id_fkey"
+            columns: ["engineer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_sessions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_sessions_song_id_fkey"
+            columns: ["song_id"]
+            isOneToOne: false
+            referencedRelation: "project_songs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_songs: {
+        Row: {
+          bpm: number | null
+          created_at: string
+          deleted_at: string | null
+          editing_status: string
+          final_approval: boolean
+          genre: string | null
+          id: string
+          mastering_status: string
+          mixing_status: string
+          notes: string | null
+          project_id: string
+          recording_status: string
+          song_key: string | null
+          status: string
+          title: string
+          track_number: number | null
+          updated_at: string
+        }
+        Insert: {
+          bpm?: number | null
+          created_at?: string
+          deleted_at?: string | null
+          editing_status?: string
+          final_approval?: boolean
+          genre?: string | null
+          id?: string
+          mastering_status?: string
+          mixing_status?: string
+          notes?: string | null
+          project_id: string
+          recording_status?: string
+          song_key?: string | null
+          status?: string
+          title: string
+          track_number?: number | null
+          updated_at?: string
+        }
+        Update: {
+          bpm?: number | null
+          created_at?: string
+          deleted_at?: string | null
+          editing_status?: string
+          final_approval?: boolean
+          genre?: string | null
+          id?: string
+          mastering_status?: string
+          mixing_status?: string
+          notes?: string | null
+          project_id?: string
+          recording_status?: string
+          song_key?: string | null
+          status?: string
+          title?: string
+          track_number?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_songs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_stages: {
+        Row: {
+          is_terminal: boolean
+          label: string
+          slug: string
+          sort_order: number
+        }
+        Insert: {
+          is_terminal?: boolean
+          label: string
+          slug: string
+          sort_order: number
+        }
+        Update: {
+          is_terminal?: boolean
+          label?: string
+          slug?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
       project_statuses: {
         Row: {
           is_terminal: boolean
@@ -976,43 +1254,67 @@ export type Database = {
       }
       projects: {
         Row: {
+          artist_name: string | null
           completion_date: string | null
           created_at: string
           customer_id: string
           deleted_at: string | null
+          description: string | null
           due_date: string | null
+          estimated_revenue: number | null
           id: string
           name: string
           notes: string | null
+          primary_engineer_id: string | null
+          priority: string
+          project_manager_id: string | null
+          project_type: string
           service_id: string | null
+          stage: string
           start_date: string | null
           status: string
           updated_at: string
         }
         Insert: {
+          artist_name?: string | null
           completion_date?: string | null
           created_at?: string
           customer_id: string
           deleted_at?: string | null
+          description?: string | null
           due_date?: string | null
+          estimated_revenue?: number | null
           id?: string
           name: string
           notes?: string | null
+          primary_engineer_id?: string | null
+          priority?: string
+          project_manager_id?: string | null
+          project_type?: string
           service_id?: string | null
+          stage?: string
           start_date?: string | null
           status?: string
           updated_at?: string
         }
         Update: {
+          artist_name?: string | null
           completion_date?: string | null
           created_at?: string
           customer_id?: string
           deleted_at?: string | null
+          description?: string | null
           due_date?: string | null
+          estimated_revenue?: number | null
           id?: string
           name?: string
           notes?: string | null
+          primary_engineer_id?: string | null
+          priority?: string
+          project_manager_id?: string | null
+          project_type?: string
           service_id?: string | null
+          stage?: string
           start_date?: string | null
           status?: string
           updated_at?: string
@@ -1026,11 +1328,32 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "projects_primary_engineer_id_fkey"
+            columns: ["primary_engineer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_project_manager_id_fkey"
+            columns: ["project_manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "projects_service_id_fkey"
             columns: ["service_id"]
             isOneToOne: false
             referencedRelation: "services"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_stage_fkey"
+            columns: ["stage"]
+            isOneToOne: false
+            referencedRelation: "project_stages"
+            referencedColumns: ["slug"]
           },
           {
             foreignKeyName: "projects_status_fkey"

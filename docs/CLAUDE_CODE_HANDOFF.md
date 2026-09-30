@@ -46,6 +46,7 @@ table reflects reality as of the Claude Code continuation.
 | 6 — Memberships | Done: schema + full CRUD UI (plans, memberships, live-computed usage from bookings). RLS verified via direct database simulation (see Phase 7 row — same method) |
 | 7 — Referrals & Rewards | Done: schema + full UI (referral codes, qualification workflow, append-only reward ledger, idempotent "issue reward" action). RLS verified via direct database simulation — real bug found and fixed same-pass (reward-balance trigger function was directly RPC-callable, revoked). `SUPABASE_SERVICE_ROLE_KEY` configured and verified live via the public gallery routes (first real end-to-end proof they work) |
 | Integrations status | Done: `integrations` table + Settings "Test connection"/"Sync now" UI (spec §34). **Square fully working, all 4 sub-syncs**: connectivity + customers (1,426 matched) + catalog (66 services) + payments (158 synced, $18,105.27) + bookings (9/9 created, catalog sync closed the gap that was skipping all of them) — after fixing `SQUARE_LOCATION_ID` and adding catalog sync (D-020, D-023, D-027, D-029). **Shopify: fully synced, all real data pulled in** — 793 customers (100 new, 688 linked to existing CRM people), 98 orders → 93 payments (7 legitimately skipped for guest checkouts), 18 products → services, zero duplicates, zero Square data corruption, all independently verified (D-028, D-030 through D-034). No "Sync now" button wired for Shopify yet — re-runs go through the same script-based path |
+| Studio OS Phase A — Song/Project Pipeline | Done: `project_stages` (14-stage workflow), `projects` extended (type/artist/description/stage/PM/engineer/estimated revenue/priority — actual revenue/balance computed live from payments, never stored), `project_songs`/`project_sessions`/`project_revisions`/`project_deliveries`. New `/projects/[id]` detail dashboard with inline stage/status controls. RLS-verified end to end including duplicate-prevention on track numbers and revision numbers (D-035) |
 | Vercel deploy | Done: production live at `https://disco-sundays-crm.vercel.app` (D-022). Two real bugs found and fixed: Root Directory wasn't set (every request 404'd), and the public Supabase env vars were present but middleware crashed on them |
 | Tasks | Done: schema + full CRUD UI, RLS-verified (D-024) |
 | Reports | Done: `/reports`, real live queries only, no fabricated stats (D-025) |
@@ -432,7 +433,24 @@ and 18 products pulled in and verified — zero duplicates, zero Square
 data corruption. **Nothing is currently blocked for either Square or
 Shopify.**
 
-Next, in order —
+**Studio OS expansion in progress** (D-035) — a large, user-authorized,
+multi-phase build turning the CRM into a full studio operating system.
+Execution order: A (Song/Project Pipeline) → B (Audio Delivery +
+Feedback) → C (Membership Tracking) → D (Engineer Management) → E
+(Automation/Rebooking) → F (Showcase/Events) → G (Deposits/No-shows/
+Agreements) → H (Business Intelligence) → I (Customer 360) → J (Client
+Portal) → K/L/M (final audits). **Phase A is complete and shipped**
+(`project_stages`/`project_songs`/`project_sessions`/
+`project_revisions`/`project_deliveries`, `/projects/[id]` dashboard).
+Continue with Phase B next — do not skip ahead; each phase ships fully
+tested/documented before the next starts, per the user's own
+instructions. The user pre-authorized continuing without per-step
+approval, reserving approval only for: destructive DB changes, deleting
+production data, changing Shopify/Square source-of-truth behavior, new
+write scopes, webhook registration, paid third-party services, and real
+customer SMS/email sends.
+
+Separately, still open whenever picked back up —
 1. Wire a "Sync now" button in Settings → Integrations for Shopify (same
    pattern as Square's) so future re-syncs don't require a script.
    Update the Shopify Dev Dashboard app's App URL from its
