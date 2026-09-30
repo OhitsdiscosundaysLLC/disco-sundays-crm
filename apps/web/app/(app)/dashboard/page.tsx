@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/auth/session";
 import { EmptyState } from "@/components/empty-state";
 
 /**
@@ -29,12 +31,18 @@ async function getCounts() {
 }
 
 export default async function DashboardPage() {
-  const counts = await getCounts();
+  const [counts, profile] = await Promise.all([getCounts(), getCurrentProfile()]);
   const isEmpty = counts.customers === 0 && counts.leads === 0;
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-neutral-900">Dashboard</h1>
+
+      {profile?.role === "engineer" ? (
+        <Link href={`/team/${profile.id}`} className="inline-block text-sm text-neutral-500 hover:underline">
+          View my studio activity and hours →
+        </Link>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <StatTile label="Customers" value={counts.customers} />

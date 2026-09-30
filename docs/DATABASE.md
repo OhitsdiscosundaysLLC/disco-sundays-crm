@@ -408,6 +408,44 @@ a pure extension of the existing native schema, not a sync.
   `included_hours` is rejected by the check constraint. Zero new
   security-advisor findings. Full cleanup verified.
 
+## Phase D — Engineer Management (applied — `0020_phase_d_engineer_management.sql`)
+
+Uses the existing `engineer` profiles role and the existing
+`project_sessions.engineer_id` / `bookings.staff_id` /
+`projects.primary_engineer_id` columns directly — no new "engineers"
+table, per the phase's own instruction. Also finally implements the
+`/team` route the nav bar (`components/nav.tsx`) already linked to
+(the `team` permission resource existed in `role_permissions` from the
+original seed, but no page was ever built for it).
+
+- `profiles` gained two columns: `specialties text[]` (nullable, real
+  staff-entered tags) and `commission_rate numeric(5,2)` (nullable,
+  check-constrained 0–100 — null means not configured, never assumed
+  to be 0%). No new active/inactive column — `profiles.status` already
+  covers that (`active`/`invited`/`disabled`).
+- **Scheduled/completed/billable hours, revenue attributed, and
+  commission owed are not stored** — `lib/engineer-metrics.ts` computes
+  them live. A booking already linked to a `project_sessions` row (via
+  `booking_id`) is excluded from the standalone-bookings side of both
+  the hours and revenue calculations, so nothing is double-counted.
+  "Utilization" = completed / (completed + cancelled + no-show) hours —
+  derived entirely from real session/booking outcomes, not a fabricated
+  capacity assumption; left `null` rather than 0% when nothing has
+  finished yet.
+- `/team` (roster, gated on `'team':'view'`) and `/team/[id]` (detail +
+  edit, with a self-view exception so any signed-in user can see their
+  own profile/hours regardless of the `team` permission). Revenue and
+  commission columns are additionally gated on `'payments':'view'` OR
+  self-view, composing two existing permission checks rather than
+  adding a new resource.
+- Verified live: `commission_rate` outside 0–100 correctly rejected by
+  the check constraint (tested reversibly against the real owner
+  profile, restored to `null` immediately after); 6 assertions against
+  the shipped `engineer-metrics` module. Not verified: a live query
+  against a real engineer profile's aggregated numbers, since
+  production has exactly one profile today (the owner) and creating a
+  fake login-capable account to test against was avoided — see D-038.
+
 ## Cross-cutting
 - `tasks` (applied — `0013_phase_tasks.sql`) — `task_statuses` (todo/
   in_progress/done/cancelled, same configurable-status pattern as

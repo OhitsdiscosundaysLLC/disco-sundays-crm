@@ -1191,6 +1191,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          commission_rate: number | null
           created_at: string
           display_name: string | null
           email: string | null
@@ -1199,11 +1200,13 @@ export type Database = {
           last_name: string | null
           phone: string | null
           role: Database["public"]["Enums"]["user_role"]
+          specialties: string[] | null
           status: string
           updated_at: string
         }
         Insert: {
           avatar_url?: string | null
+          commission_rate?: number | null
           created_at?: string
           display_name?: string | null
           email?: string | null
@@ -1212,11 +1215,13 @@ export type Database = {
           last_name?: string | null
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          specialties?: string[] | null
           status?: string
           updated_at?: string
         }
         Update: {
           avatar_url?: string | null
+          commission_rate?: number | null
           created_at?: string
           display_name?: string | null
           email?: string | null
@@ -1225,6 +1230,7 @@ export type Database = {
           last_name?: string | null
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          specialties?: string[] | null
           status?: string
           updated_at?: string
         }

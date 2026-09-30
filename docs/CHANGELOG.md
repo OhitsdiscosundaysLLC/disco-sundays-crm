@@ -64,6 +64,41 @@ newest first.
   not run** — per explicit instruction, waiting for approval. No
   "Sync now" UI button was wired for Shopify in this pass.
 
+## Claude Code handoff continuation — Studio operating system expansion, Phase D: Engineer Management — 2026-09-30
+
+- **Phase D — Engineer Management, complete**: `0020_phase_d_engineer_management.sql`.
+  Used the existing `engineer` profiles role and existing
+  `project_sessions.engineer_id`/`bookings.staff_id`/
+  `projects.primary_engineer_id` columns directly — no new engineers
+  table. Also discovered and fixed a real pre-existing bug: the "Team"
+  nav item has pointed at `/team` since the original permission seed,
+  but no `/team` route ever existed — it was a dead link for owner/
+  admin. Built it for real as part of this phase.
+- Added `profiles.specialties` (text array) and
+  `profiles.commission_rate` (nullable percentage, 0–100). Hours,
+  revenue attribution, and commission owed are **not** stored —
+  `lib/engineer-metrics.ts` computes them live from real sessions/
+  bookings/payments, with bookings already linked to a project session
+  excluded from the standalone-booking side so nothing is ever
+  double-counted.
+- Built `/team` (staff directory with per-engineer hours/utilization,
+  and revenue/commission for roles with payments visibility) and
+  `/team/[id]` (full profile, specialties/commission editing, assigned
+  projects, recent sessions) — plus a self-view exception so any
+  engineer can see their own numbers even without the broader `team`
+  permission, and a link from the dashboard so they can actually find
+  it.
+- **Tested**: the `commission_rate` check constraint correctly rejects
+  values outside 0–100 (tested reversibly against the real owner
+  profile, restored immediately after); 6 assertions against the
+  engineer-metrics module covering hour combination without double-
+  counting, the utilization ratio, and commission math. Honestly
+  flagged what couldn't be tested this pass: a full live query against
+  a real engineer's numbers, since production has no engineer accounts
+  yet and creating a fake one to test against was avoided on purpose.
+  `npm run typecheck`, `lint`, and `build` all pass clean. Zero new
+  security-advisor findings.
+
 ## Claude Code handoff continuation — Studio operating system expansion, Phase C: Real Membership Tracking — 2026-09-30
 
 - **Phase C — Real Membership Tracking, complete**: `0019_phase_c_membership_hours.sql`.

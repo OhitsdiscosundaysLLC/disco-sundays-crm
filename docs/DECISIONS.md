@@ -1031,6 +1031,7 @@ prior-period booking was correctly excluded from current usage. Also
 verified live: a negative `included_hours` value is correctly rejected
 by the new check constraint. All test data cleaned up; zero new
 security-advisor findings.
+
 **Built**: a real membership dashboard on `/memberships` — active count,
 MRR (billing-interval-normalized, `one_time` plans correctly excluded),
 renewals due in 14 days, cancellations in the last 30 days (reusing
@@ -1041,6 +1042,67 @@ lists: **at-risk** (renewing soon + under 50% used), **low-usage**
 includes), and **renewing soon**. The membership detail page now shows
 real used/included/remaining hours and usage % for the current period
 instead of just a completed-bookings count.
+
+## D-038: Phase D (Engineer Management) shipped — extended `profiles` directly, computed hours/revenue/commission live, finally wired up the dead `/team` nav link
+
+**Context**: the phase's own instruction was "use the existing engineer
+role... do not create an unnecessary Engineer table if Team/User
+profiles can support this safely." `profiles` already had the
+`engineer` role (D-003) and a `team` permission resource already
+existed in `role_permissions` — but no `/team` route existed, so the
+"Team" nav item (`components/nav.tsx`) was a **dead link** for owner/
+admin. Fixing that is the natural home for this phase's work, not scope
+creep.
+**Schema**: two additive columns on `profiles`
+(`supabase/migrations/0020_phase_d_engineer_management.sql`):
+`specialties text[]` (nullable) and `commission_rate numeric(5,2)`
+(nullable, check-constrained 0–100 — null means "not configured," never
+assumed to be 0%, same reasoning as D-018's referral rewards). No new
+"active/inactive" column — `profiles.status` already has exactly that
+domain (`active`/`invited`/`disabled`).
+**Hours/revenue/commission are not stored** — `lib/engineer-metrics.ts`
+computes them live from `project_sessions.engineer_id` (Phase A) and
+`bookings.staff_id` (Phase 3), with a booking already linked to a
+session via `project_sessions.booking_id` excluded from the standalone-
+bookings side so it's never counted twice. Revenue is attributed the
+same way: `payments` linked to a project via `primary_engineer_id`, or
+to a standalone booking via `staff_id` — again excluding bookings
+already represented by a session. "Utilization" is defined honestly as
+completed / (completed + cancelled + no-show) hours — a real ratio
+derivable from actual session/booking outcomes — rather than inventing
+a "capacity" or "available hours" denominator the business never
+defined; it's left `null` (not 0%) when there's nothing finished yet to
+measure.
+**Access control**: `/team` (roster) requires `'team':'view'` (today:
+owner/admin only, per the existing matrix — unchanged). `/team/[id]`
+additionally allows a user to view **their own** profile regardless of
+that permission — an engineer can always see their own hours. Revenue/
+commission columns are additionally gated on `'payments':'view'` OR
+self-view, so a role that can see the roster but not payments (e.g. if
+`manager` were ever granted `team:view`) would see hours but not
+dollars — this falls naturally out of composing the two existing
+permission checks, no new resource or hardcoded role name needed. Added
+one link from `/dashboard` so an engineer can actually reach their own
+page without knowing the URL, since the nav item itself stays hidden
+for roles without `team:view`.
+**Verified live**: `commission_rate` > 100 and < 0 both correctly
+rejected by the check constraint (tested reversibly against the real
+owner profile, reset to `null` immediately after — zero lasting
+change); 6 assertions run directly against the shipped
+`engineer-metrics` module (session+booking hour combination without
+double-counting, utilization ratio, null-not-zero when nothing
+finished, commission math, null-not-zero when no rate set).
+`npm run typecheck`, `lint`, and `build` all pass, including the new
+`/team` and `/team/[id]` routes. Zero new security-advisor findings.
+**Not verified in this pass**: a full live query against a real
+engineer profile's aggregated hours/revenue — production currently has
+exactly one profile (the owner account), and creating a fake login-
+capable engineer account to test against would mean fabricating a real
+identity, which the standing production rules treat differently from
+disposable customer/project test rows (cleaned up immediately after,
+as used in every other phase's testing). The query logic itself is
+type-checked, code-reviewed, and reuses the exact same join/aggregation
+patterns already proven correct in Phase C's membership dashboard.
 
 ---
 

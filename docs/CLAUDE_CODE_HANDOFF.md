@@ -455,7 +455,13 @@ subscriptions, so memberships stay native CRM data; added
 `membership_plans.included_hours`, built `lib/membership-usage.ts` for
 live period-scoped usage math, and a real `/memberships` dashboard
 (MRR, renewals, at-risk/low-usage/overage/renewing-soon segments).
-Continue with Phase D next — do not skip ahead; each phase ships fully
+**Phase D is complete and shipped** (D-038) — added
+`profiles.specialties`/`commission_rate`, built `lib/engineer-metrics.ts`
+for live hours/revenue/commission math with no double-counting between
+sessions and bookings, and finally implemented `/team` + `/team/[id]`
+(the nav bar had linked to `/team` since the original permission seed,
+but the route never existed until now). Continue with Phase E next — do
+not skip ahead; each phase ships fully
 tested/documented before the next starts, per the user's own
 instructions. The user pre-authorized continuing without per-step
 approval, reserving approval only for: destructive DB changes, deleting
