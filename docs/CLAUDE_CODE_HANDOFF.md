@@ -449,8 +449,13 @@ bucket, staff upload/lifecycle/comment/approval UI on `/projects/[id]`,
 and a public password-gated `/deliver/[slug]` route with a real custom
 audio player (timeline, comment markers, version switcher, approval).
 Reused the gallery password/signed-cookie pattern rather than building
-customer auth — see D-036 for the full reasoning. Continue with Phase C
-next — do not skip ahead; each phase ships fully
+customer auth — see D-036 for the full reasoning. **Phase C is complete
+and shipped** (D-037) — confirmed live (read-only) that Square has zero
+subscriptions, so memberships stay native CRM data; added
+`membership_plans.included_hours`, built `lib/membership-usage.ts` for
+live period-scoped usage math, and a real `/memberships` dashboard
+(MRR, renewals, at-risk/low-usage/overage/renewing-soon segments).
+Continue with Phase D next — do not skip ahead; each phase ships fully
 tested/documented before the next starts, per the user's own
 instructions. The user pre-authorized continuing without per-step
 approval, reserving approval only for: destructive DB changes, deleting

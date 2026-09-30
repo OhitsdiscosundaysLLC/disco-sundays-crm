@@ -366,6 +366,48 @@ scoped to one project.
   policy calls). Zero new security-advisor findings. Full cleanup
   verified.
 
+## Phase C — Real Membership Tracking (applied — `0019_phase_c_membership_hours.sql`)
+
+Inspected first, per the phase's own instructions: `membership_plans`/
+`memberships`/`membership_usage` already existed (Phase 6) with zero
+production rows, and `bookings.membership_id` already existed for
+attribution (D-017). A live, read-only check against Square's real
+Subscriptions API returned zero subscriptions — see D-037 — so this is
+a pure extension of the existing native schema, not a sync.
+
+- `membership_plans` gained one column: `included_hours numeric(6,2)`
+  (nullable — null means unlimited/not hour-based), check-constrained
+  to `>= 0`. The only structured field the spec's list needed that
+  `benefits` jsonb didn't already cover.
+- **Used/remaining hours and usage % are not stored** — `lib/membership-usage.ts`
+  computes them live, scoped to the membership's *current billing
+  period* (derived from `start_date` stepped forward by
+  `billing_interval`-sized calendar increments — monthly/quarterly/
+  annual — not a separate invented periods table; `one_time` plans
+  never reset). Usage sums real completed `bookings` attributed via
+  the existing `membership_id` column — each booking has exactly one
+  membership FK, so there is no double-counting path.
+  `project_sessions` (Phase A) is deliberately **not** a second usage
+  source, since a studio session already corresponds 1:1 with a real
+  booking in this business — counting both would double-count.
+- No RLS changes — existing `membership_plans`/`memberships`/
+  `membership_usage` policies already cover the new column and query
+  shapes.
+- Built a real dashboard on `/memberships`: active count, MRR
+  (billing-interval-normalized, `one_time` excluded), renewals due in
+  14 days, cancellations in the last 30 days (reuses `deleted_at`,
+  already set by `cancelMembership` — no redundant cancellation-date
+  column), and four segments — at-risk, low-usage, overage, renewing
+  soon.
+- Verified via 20 assertions against the shipped usage/period module
+  (period-boundary stepping across monthly/quarterly/one-time,
+  booking-hours edge cases, overage clamping, unlimited-plan handling,
+  MRR normalization) plus a live end-to-end pass with real inserted
+  rows confirming a booking from the *prior* billing period is
+  correctly excluded from current usage, and that a negative
+  `included_hours` is rejected by the check constraint. Zero new
+  security-advisor findings. Full cleanup verified.
+
 ## Cross-cutting
 - `tasks` (applied — `0013_phase_tasks.sql`) — `task_statuses` (todo/
   in_progress/done/cancelled, same configurable-status pattern as

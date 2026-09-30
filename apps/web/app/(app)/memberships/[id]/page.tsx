@@ -7,6 +7,7 @@ import { customerLabel, formatDate } from "@/lib/format";
 import { EmptyState } from "@/components/empty-state";
 import { SubmitButton } from "@/components/submit-button";
 import { cancelMembership } from "../actions";
+import { computeMembershipUsage } from "@/lib/membership-usage";
 
 export default async function MembershipDetailPage({
   params,
@@ -33,12 +34,12 @@ export default async function MembershipDetailPage({
   const [{ data: membership }, { data: usageBookings }] = await Promise.all([
     supabase
       .from("memberships")
-      .select("*, customers(id, display_name, email, phone), membership_plans(name, billing_interval, price)")
+      .select("*, customers(id, display_name, email, phone), membership_plans(name, billing_interval, price, included_hours)")
       .eq("id", id)
       .single(),
     supabase
       .from("bookings")
-      .select("id, date, status, services(name)")
+      .select("id, date, start_time, end_time, status, services(name)")
       .eq("membership_id", id)
       .is("deleted_at", null)
       .order("date", { ascending: false }),
@@ -47,6 +48,13 @@ export default async function MembershipDetailPage({
   if (!membership || membership.deleted_at) notFound();
 
   const completedCount = (usageBookings ?? []).filter((b) => b.status === "completed").length;
+
+  const usage = computeMembershipUsage({
+    startDate: membership.start_date,
+    billingInterval: membership.membership_plans?.billing_interval ?? "monthly",
+    includedHours: membership.membership_plans?.included_hours ?? null,
+    completedBookings: (usageBookings ?? []).filter((b) => b.status === "completed"),
+  });
 
   return (
     <div className="max-w-2xl space-y-8">
@@ -105,10 +113,37 @@ export default async function MembershipDetailPage({
       </section>
 
       <section className="rounded-lg border border-neutral-200 p-4">
-        <h2 className="text-sm font-medium text-neutral-900">Usage</h2>
+        <h2 className="text-sm font-medium text-neutral-900">Usage this period</h2>
         <p className="mt-1 text-xs text-neutral-500">
-          Computed live from bookings attributed to this membership — never hand-entered.
+          {formatDate(usage.periodStart.toISOString())} –{" "}
+          {usage.periodEnd.getUTCFullYear() === 9999 ? "ongoing" : formatDate(usage.periodEnd.toISOString())} · computed
+          live from completed bookings attributed to this membership, never hand-entered.
         </p>
+        <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div>
+            <dt className="text-xs text-neutral-500">Used</dt>
+            <dd className="text-lg font-semibold text-neutral-900">{usage.usedHours.toFixed(1)} hrs</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-neutral-500">Included</dt>
+            <dd className="text-lg font-semibold text-neutral-900">
+              {usage.includedHours !== null ? `${usage.includedHours} hrs` : "Unlimited"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-neutral-500">Remaining</dt>
+            <dd className="text-lg font-semibold text-neutral-900">
+              {usage.remainingHours !== null ? `${usage.remainingHours.toFixed(1)} hrs` : "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-neutral-500">Usage</dt>
+            <dd className={`text-lg font-semibold ${usage.overageHours > 0 ? "text-red-600" : "text-neutral-900"}`}>
+              {usage.usagePercentage !== null ? `${usage.usagePercentage.toFixed(0)}%` : "—"}
+              {usage.overageHours > 0 ? ` (+${usage.overageHours.toFixed(1)} over)` : ""}
+            </dd>
+          </div>
+        </dl>
         {!usageBookings || usageBookings.length === 0 ? (
           <div className="mt-3">
             <EmptyState

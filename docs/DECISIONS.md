@@ -981,6 +981,67 @@ hash/verify, HMAC sign/verify) are the exact same, unmodified functions
 already proven live by the working gallery feature, just under a new
 cookie namespace.
 
+## D-037: Phase C (Real Membership Tracking) shipped — confirmed live that Square has zero subscriptions, extended the existing schema rather than syncing anything
+
+**Context**: the spec's own instruction was "inspect existing Memberships
+and Square data first" and "do not invent membership plans — use
+existing Square data where appropriate." `membership_plans`/
+`memberships`/`membership_usage` already existed from an earlier pass
+(Phase 6) with zero rows in production, `bookings.membership_id` already
+existed for attribution (D-017: "usage computed live, never
+hand-entered").
+**Verified live** (read-only, no write) against Square's real
+Subscriptions API (`POST /v2/subscriptions/search`): `status 200`, zero
+subscriptions returned. This business does not run memberships through
+Square — there is no external subscription data to sync, reconcile, or
+import. Continuing to invent Square-sourced membership rows would have
+directly violated the "never use fake data" rule; instead, plans and
+memberships remain genuine, staff-entered CRM data, exactly as they
+already were.
+**Schema change**: one additive column,
+`membership_plans.included_hours numeric(6,2)` (nullable — null means
+unlimited/not hour-based), `supabase/migrations/0019_phase_c_membership_hours.sql`.
+This is the only structured field the existing schema was missing
+against the spec's field list; `benefits` jsonb already covers
+free-form entitlements and needed no change.
+**Used/remaining hours and usage % are deliberately not stored** — same
+principle as `projects.estimated_revenue` (D-035) and D-017 before it.
+New `lib/membership-usage.ts` computes them live: `currentPeriodBounds()`
+derives the membership's *current billing period* by stepping forward
+from `start_date` in `billing_interval`-sized increments (calendar
+month/quarter/year, not a fixed 30-day chunk) until the window brackets
+today — real math over real fields, not a separate invented "periods"
+table. `one_time` plans never reset (their "period" is the membership's
+whole lifetime). Usage sums real completed `bookings` attributed via the
+existing `membership_id` column, scoped to that period — each booking
+can only be attributed to one membership (a single FK), so there is no
+double-counting path. `project_sessions` (Phase A) was deliberately
+**not** treated as a second usage source: a studio session already has a
+1:1 real-world correspondence with a booking in this business, and
+counting both would create the exact double-counting the spec warns
+against.
+**Verified correct** via 20 assertions run directly against the shipped
+module (period stepping across monthly/quarterly/one-time boundaries,
+booking-hours parsing including missing-time and negative-duration
+edge cases, overage clamping, unlimited-plan null-handling, MRR
+normalization across billing intervals) and one end-to-end pass against
+real inserted rows (monthly plan, membership started 45 days ago, one
+booking in the prior period, one in the current period) confirming the
+prior-period booking was correctly excluded from current usage. Also
+verified live: a negative `included_hours` value is correctly rejected
+by the new check constraint. All test data cleaned up; zero new
+security-advisor findings.
+**Built**: a real membership dashboard on `/memberships` — active count,
+MRR (billing-interval-normalized, `one_time` plans correctly excluded),
+renewals due in 14 days, cancellations in the last 30 days (reusing
+`deleted_at`, which `cancelMembership` already sets as the de facto
+cancellation timestamp — no redundant column added), plus four segment
+lists: **at-risk** (renewing soon + under 50% used), **low-usage**
+(under 25% used this period), **overage** (used more than the plan
+includes), and **renewing soon**. The membership detail page now shows
+real used/included/remaining hours and usage % for the current period
+instead of just a completed-bookings count.
+
 ---
 
 ## Open questions for the user (not decided unilaterally)

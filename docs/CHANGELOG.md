@@ -64,6 +64,43 @@ newest first.
   not run** — per explicit instruction, waiting for approval. No
   "Sync now" UI button was wired for Shopify in this pass.
 
+## Claude Code handoff continuation — Studio operating system expansion, Phase C: Real Membership Tracking — 2026-09-30
+
+- **Phase C — Real Membership Tracking, complete**: `0019_phase_c_membership_hours.sql`.
+  Inspected the existing Memberships module and Square data first, per
+  the phase's own instructions — `membership_plans`/`memberships`/
+  `membership_usage` already existed (Phase 6) with zero production
+  rows, and `bookings.membership_id` already existed for usage
+  attribution (D-017).
+- **Confirmed live, read-only, against the real Square account**: the
+  Subscriptions API (`POST /v2/subscriptions/search`) returns zero
+  subscriptions — this business does not run memberships through
+  Square. No external data to sync; continued building on the existing
+  native schema instead of inventing Square-sourced rows (D-037).
+- Added one column: `membership_plans.included_hours` (nullable — null
+  means unlimited). Used/remaining hours and usage % are **not**
+  stored — new `lib/membership-usage.ts` computes them live, scoped to
+  the membership's real current billing period (derived from
+  `start_date` + `billing_interval`, stepped forward in calendar
+  months/quarters/years, not a fixed 30-day guess), summing real
+  completed bookings attributed via the existing `membership_id`
+  column so there's no double-counting path.
+- Built a real membership dashboard on `/memberships`: active count,
+  billing-interval-normalized MRR, renewals due in 14 days,
+  cancellations in the last 30 days, and four segment lists — at-risk,
+  low-usage, overage, and renewing-soon. The membership detail page now
+  shows real used/included/remaining hours and usage % for the current
+  period.
+- **Tested**: 20 assertions run directly against the shipped usage
+  module (period-boundary stepping across monthly/quarterly/one-time
+  intervals, booking-hours edge cases, overage clamping, unlimited-plan
+  handling, MRR normalization), plus a live end-to-end pass with real
+  inserted rows proving a booking from the *prior* billing period is
+  correctly excluded from the current period's usage, and that a
+  negative `included_hours` value is rejected by the database. Zero new
+  security-advisor findings. `npm run typecheck`, `lint`, and `build`
+  all pass clean. All test data cleaned up.
+
 ## Claude Code handoff continuation — Studio operating system expansion, Phase B: Audio Delivery + Feedback — 2026-09-30
 
 - **Phase B — Audio Delivery + Feedback, complete**: `0018_phase_b_audio_delivery.sql`.

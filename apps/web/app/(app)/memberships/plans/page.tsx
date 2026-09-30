@@ -23,7 +23,7 @@ export default async function MembershipPlansPage() {
   const supabase = await createClient();
   const { data: plans, error } = await supabase
     .from("membership_plans")
-    .select("id, name, price, billing_interval, active")
+    .select("id, name, price, billing_interval, included_hours, active")
     .is("deleted_at", null)
     .order("name");
 
@@ -61,6 +61,7 @@ export default async function MembershipPlansPage() {
                 <th className="px-4 py-2 font-medium">Name</th>
                 <th className="px-4 py-2 font-medium">Price</th>
                 <th className="px-4 py-2 font-medium">Billing</th>
+                <th className="px-4 py-2 font-medium">Included hours</th>
                 <th className="px-4 py-2 font-medium">Status</th>
                 <th className="px-4 py-2 font-medium" />
               </tr>
@@ -71,6 +72,7 @@ export default async function MembershipPlansPage() {
                   <td className="px-4 py-2 font-medium text-neutral-900">{plan.name}</td>
                   <td className="px-4 py-2 text-neutral-600">{plan.price != null ? `$${plan.price}` : "—"}</td>
                   <td className="px-4 py-2 text-neutral-600">{plan.billing_interval}</td>
+                  <td className="px-4 py-2 text-neutral-600">{plan.included_hours != null ? `${plan.included_hours} hrs` : "Unlimited"}</td>
                   <td className="px-4 py-2">
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ${

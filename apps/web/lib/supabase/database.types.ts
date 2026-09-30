@@ -955,6 +955,7 @@ export type Database = {
           currency: string
           deleted_at: string | null
           id: string
+          included_hours: number | null
           name: string
           price: number | null
           updated_at: string
@@ -967,6 +968,7 @@ export type Database = {
           currency?: string
           deleted_at?: string | null
           id?: string
+          included_hours?: number | null
           name: string
           price?: number | null
           updated_at?: string
@@ -979,6 +981,7 @@ export type Database = {
           currency?: string
           deleted_at?: string | null
           id?: string
+          included_hours?: number | null
           name?: string
           price?: number | null
           updated_at?: string

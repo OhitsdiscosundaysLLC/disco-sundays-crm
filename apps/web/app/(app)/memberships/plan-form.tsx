@@ -17,6 +17,7 @@ export type PlanDefaults = {
   name: string;
   price: number | null;
   billing_interval: string;
+  included_hours: number | null;
   active: boolean;
 };
 
@@ -50,6 +51,13 @@ export function PlanForm({
           name="billing_interval"
           defaultValue={defaults.billing_interval}
           options={BILLING_OPTIONS}
+        />
+        <TextField
+          label="Included hours per period (optional)"
+          name="included_hours"
+          type="number"
+          defaultValue={defaults.included_hours !== null ? String(defaults.included_hours) : null}
+          placeholder="Leave blank if unlimited"
         />
       </div>
       <CheckboxField label="Active (available to assign)" name="active" defaultChecked={defaults.active} />

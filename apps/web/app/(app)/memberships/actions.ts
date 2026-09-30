@@ -35,6 +35,7 @@ function readPlanFields(formData: FormData) {
     name: str(formData, "name") ?? "",
     price: num(formData, "price"),
     billing_interval: str(formData, "billing_interval") ?? "monthly",
+    included_hours: num(formData, "included_hours"),
     active: formData.get("active") === "on",
   };
 }

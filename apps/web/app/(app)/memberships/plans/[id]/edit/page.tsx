@@ -20,7 +20,7 @@ export default async function EditPlanPage({
   const supabase = await createClient();
   const { data: plan } = await supabase
     .from("membership_plans")
-    .select("id, name, price, billing_interval, active")
+    .select("id, name, price, billing_interval, included_hours, active")
     .eq("id", id)
     .is("deleted_at", null)
     .single();

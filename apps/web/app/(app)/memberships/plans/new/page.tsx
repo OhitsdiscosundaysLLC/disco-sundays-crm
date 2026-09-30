@@ -17,7 +17,7 @@ export default async function NewPlanPage() {
       <PlanForm
         action={createPlan}
         submitLabel="Create plan"
-        defaults={{ name: "", price: null, billing_interval: "monthly", active: true }}
+        defaults={{ name: "", price: null, billing_interval: "monthly", included_hours: null, active: true }}
       />
     </div>
   );
